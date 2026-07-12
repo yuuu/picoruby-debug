@@ -64,6 +64,32 @@ Commands at the prompt:
 - `uw` / `unwatch [<number>]` — remove watchpoint `<number>` (as shown by
   `watch` with no argument), or all of them if no number is given
 
+## DAP transport (experimental, POSIX only)
+
+`DapTransport` (`mrblib/dap_transport.rb`) implements just the wire format
+a [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/)
+client expects — `Content-Length: <n>\r\n\r\n<n bytes of JSON>` framing over
+a TCP socket — with no DAP request/response semantics yet; it currently only
+listens for one connection and echoes every received message back. It's the
+transport groundwork for a future DAP-speaking front end (e.g. VS Code) on
+top of the same `Debugger` this gem already has.
+
+`picoruby-socket` is **not** a hard dependency of this gem — a build without
+it still compiles, and `DapTransport.available?` returns `false`. To try it,
+add `picoruby-socket` to your build config, then:
+
+```ruby
+require 'debug'
+DapTransport.new(4711).run_echo_loop if DapTransport.available?
+```
+
+and connect with e.g. `nc localhost 4711`, sending a `Content-Length`-framed
+JSON message (note the `\r\n` line endings DAP requires):
+
+```
+printf 'Content-Length: 13\r\n\r\n{"hello":1}' | nc localhost 4711
+```
+
 ## Installation
 
 Add the following line to your build configuration:
@@ -81,5 +107,8 @@ any target (POSIX host, ESP32, etc.).
 - `picoruby-sandbox`
 - `picoruby-editor`
 - `picoruby-io-console`
+- `picoruby-json`
 - `mruby-binding` (mruby only)
 - `mruby-eval` (mruby only)
+- `picoruby-socket` (optional, soft dependency — only needed for
+  `DapTransport`; see above)
