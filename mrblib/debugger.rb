@@ -202,6 +202,65 @@ class Debugger
     end
   end
 
+  # Dispatches one command line typed at the (prdb) prompt. Returns true if
+  # the prompt loop should stop reading input and let the paused script
+  # resume (continue/step/next/quit), false to keep prompting.
+  def dispatch_command(cmd, verb, arg, file, line, bnd)
+    case verb
+    when "", "c", "continue"
+      set_run_mode
+      return true
+    when "s", "step"
+      set_step_mode
+      return true
+    when "n", "next"
+      set_next_mode
+      return true
+    when "q", "quit"
+      request_quit
+      return true
+    when "bt", "where"
+      print_backtrace
+    when "l", "list"
+      center = arg ? arg.to_i : line
+      center = line if center <= 0
+      show_source(file, line, center)
+    when "b", "break"
+      if arg
+        set_breakpoint(file, arg)
+      else
+        list_breakpoints
+      end
+    when "d", "delete"
+      delete_breakpoint(arg)
+    when "p", "print"
+      if arg
+        print_expr(bnd, arg)
+      else
+        puts "Usage: p <expression>"
+      end
+    when "disp", "display"
+      if arg
+        add_display_cmd(bnd, arg)
+      else
+        list_displays(bnd)
+      end
+    when "undisp", "undisplay"
+      delete_display(arg)
+    when "w", "watch"
+      if arg
+        add_watch_cmd(bnd, arg)
+      else
+        list_watches
+      end
+    when "uw", "unwatch"
+      delete_watch(arg)
+    else
+      puts "unknown command: #{cmd}"
+    end
+    false
+  end
+
   # Called from the C code_fetch_hook. bnd is a Binding for the paused frame
   # (nil if none could be built). real_stop is false for a watch-forced
   # per-line visit: return silently then unless a watch changed.
@@ -232,58 +291,7 @@ class Debugger
         buffer.clear
         verb, arg = cmd.split(" ", 2)
         verb ||= ""
-        case verb
-        when "", "c", "continue"
-          set_run_mode
-          break
-        when "s", "step"
-          set_step_mode
-          break
-        when "n", "next"
-          set_next_mode
-          break
-        when "q", "quit"
-          request_quit
-          break
-        when "bt", "where"
-          print_backtrace
-        when "l", "list"
-          center = arg ? arg.to_i : line
-          center = line if center <= 0
-          show_source(file, line, center)
-        when "b", "break"
-          if arg
-            set_breakpoint(file, arg)
-          else
-            list_breakpoints
-          end
-        when "d", "delete"
-          delete_breakpoint(arg)
-        when "p", "print"
-          if arg
-            print_expr(bnd, arg)
-          else
-            puts "Usage: p <expression>"
-          end
-        when "disp", "display"
-          if arg
-            add_display_cmd(bnd, arg)
-          else
-            list_displays(bnd)
-          end
-        when "undisp", "undisplay"
-          delete_display(arg)
-        when "w", "watch"
-          if arg
-            add_watch_cmd(bnd, arg)
-          else
-            list_watches
-          end
-        when "uw", "unwatch"
-          delete_watch(arg)
-        else
-          puts "unknown command: #{cmd}"
-        end
+        break if dispatch_command(cmd, verb, arg, file, line, bnd)
       end
     end
   ensure
