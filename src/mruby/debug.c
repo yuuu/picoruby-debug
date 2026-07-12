@@ -4,8 +4,7 @@
 #include <mruby/class.h>
 #include <mruby/debug.h>
 #include <mruby/irep.h> /* irep->iseq; debug.h only fwd-decls mrb_irep */
-#include <mruby/proc.h>
-#include <mruby/internal.h> /* mrb_env_new; must follow proc.h (MRUBY_PROC_H-gated) */
+#include <mruby/proc.h> /* MRB_PROC_CFUNC_P */
 #include <mruby/variable.h>
 
 #include "../../include/breakpoint.h"
@@ -13,9 +12,6 @@
 #include "../../include/watch_breakpoint.h"
 #include "../../include/debugger.h"
 #include "../../include/debug.h"
-
-/* Defined in mruby-binding/src/binding.c; no public header declares it. */
-mrb_value mrb_binding_new(mrb_state *mrb, const struct RProc *proc, mrb_value recv, struct REnv *env);
 
 /* No console output from C: printing happens on the Ruby side, keeping this
  * gem free of HAL/stdio dependencies. */
@@ -44,57 +40,6 @@ debug_current_line(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc)
 {
   uint32_t off = (uint32_t)(pc - irep->iseq);
   return mrb_debug_get_line(mrb, irep, off);
-}
-
-/* --- Frame-walking API (include/debug.h), shared with debugger.c for
- * backtrace/print. depth=0 is the innermost (currently executing) frame,
- * matching backtrace.c's pack_backtrace ci-walk. */
-int
-mrb_debug_frame_count(mrb_state *mrb, struct mrb_context *c)
-{
-  return (int)(c->ci - c->cibase) + 1;
-}
-
-mrb_callinfo *
-mrb_debug_frame_at(mrb_state *mrb, struct mrb_context *c, int depth)
-{
-  int count = mrb_debug_frame_count(mrb, c);
-  if (depth < 0 || depth >= count) return NULL;
-  return &c->cibase[count - 1 - depth];
-}
-
-/* is_top (depth 0, the innermost/currently-executing frame): ci->pc is kept
- * live at the current instruction while the code_fetch_hook is firing (see
- * vm.c's CALL_CODE_HOOKS), so it's used as-is. Any other frame's ci->pc is
- * the resume address just past its call instruction, so step back one
- * instruction to the call site, as pack_backtrace/mrb_binding_debugger do. */
-mrb_bool
-mrb_debug_frame_position(mrb_state *mrb, mrb_callinfo *ci, mrb_bool is_top, int32_t *line, const char **file)
-{
-  if (!ci->proc || MRB_PROC_CFUNC_P(ci->proc) || !ci->pc) return 0;
-  const mrb_irep *irep = ci->proc->body.irep;
-  if (!irep) return 0;
-  const mrb_code *pc = is_top ? ci->pc : &ci->pc[-1];
-  uint32_t off = (uint32_t)(pc - irep->iseq);
-  return mrb_debug_get_position(mrb, irep, off, line, file);
-}
-
-/* Build a Binding for ci's frame (same boxing as Kernel#binding); nil for a
- * C frame. Extern (include/debug.h) so debugger.c can build bindings for
- * non-top frames too. */
-mrb_value
-mrb_debug_frame_binding(mrb_state *mrb, struct mrb_context *c, mrb_callinfo *ci)
-{
-  const struct RProc *proc = ci->proc;
-  if (!proc || MRB_PROC_CFUNC_P(proc)) return mrb_nil_value();
-  struct REnv *env = mrb_vm_ci_env(ci);
-  if (!env) {
-    int nstacks = proc->body.irep->nlocals;
-    env = mrb_env_new(mrb, c, ci, nstacks, ci->stack, mrb_vm_ci_target_class(ci));
-    ci->u.env = env;
-  }
-  mrb_value recv = ci->stack[0];
-  return mrb_binding_new(mrb, proc, recv, env);
 }
 
 /* Call Debugger#on_break. A funcall on the same context would realloc the

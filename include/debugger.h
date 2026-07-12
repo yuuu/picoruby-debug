@@ -17,4 +17,11 @@ int mrb_debugger_quit_requested_p(mrb_state *mrb, mrb_value self);
 void mrb_debugger_update_next_ci(mrb_state *mrb, mrb_value self, int real_stop);
 void mrb_debugger_reset_mode(mrb_state *mrb, mrb_value self);
 
+/* Frame-walking API, called from debug.c's hook (and future frame-scoped
+ * evaluate). depth=0 is the innermost (currently executing) frame. */
+int mrb_debug_frame_count(mrb_state *mrb, struct mrb_context *c);
+mrb_callinfo *mrb_debug_frame_at(mrb_state *mrb, struct mrb_context *c, int depth);
+mrb_bool mrb_debug_frame_position(mrb_state *mrb, mrb_callinfo *ci, mrb_bool is_top, int32_t *line, const char **file);
+mrb_value mrb_debug_frame_binding(mrb_state *mrb, struct mrb_context *c, mrb_callinfo *ci);
+
 #endif /* PICORUBY_DEBUG_DEBUGGER_H */
