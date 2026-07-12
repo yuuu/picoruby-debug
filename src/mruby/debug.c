@@ -46,10 +46,44 @@ debug_current_line(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc)
   return mrb_debug_get_line(mrb, irep, off);
 }
 
+/* --- Frame-walking API (include/debug.h), shared with debugger.c for
+ * backtrace/print. depth=0 is the innermost (currently executing) frame,
+ * matching backtrace.c's pack_backtrace ci-walk. */
+int
+mrb_debug_frame_count(mrb_state *mrb, struct mrb_context *c)
+{
+  return (int)(c->ci - c->cibase) + 1;
+}
+
+mrb_callinfo *
+mrb_debug_frame_at(mrb_state *mrb, struct mrb_context *c, int depth)
+{
+  int count = mrb_debug_frame_count(mrb, c);
+  if (depth < 0 || depth >= count) return NULL;
+  return &c->cibase[count - 1 - depth];
+}
+
+/* is_top (depth 0, the innermost/currently-executing frame): ci->pc is kept
+ * live at the current instruction while the code_fetch_hook is firing (see
+ * vm.c's CALL_CODE_HOOKS), so it's used as-is. Any other frame's ci->pc is
+ * the resume address just past its call instruction, so step back one
+ * instruction to the call site, as pack_backtrace/mrb_binding_debugger do. */
+mrb_bool
+mrb_debug_frame_position(mrb_state *mrb, mrb_callinfo *ci, mrb_bool is_top, int32_t *line, const char **file)
+{
+  if (!ci->proc || MRB_PROC_CFUNC_P(ci->proc) || !ci->pc) return 0;
+  const mrb_irep *irep = ci->proc->body.irep;
+  if (!irep) return 0;
+  const mrb_code *pc = is_top ? ci->pc : &ci->pc[-1];
+  uint32_t off = (uint32_t)(pc - irep->iseq);
+  return mrb_debug_get_position(mrb, irep, off, line, file);
+}
+
 /* Build a Binding for ci's frame (same boxing as Kernel#binding); nil for a
- * C frame. */
-static mrb_value
-debug_make_binding(mrb_state *mrb, struct mrb_context *c, mrb_callinfo *ci)
+ * C frame. Extern (include/debug.h) so debugger.c can build bindings for
+ * non-top frames too. */
+mrb_value
+mrb_debug_frame_binding(mrb_state *mrb, struct mrb_context *c, mrb_callinfo *ci)
 {
   const struct RProc *proc = ci->proc;
   if (!proc || MRB_PROC_CFUNC_P(proc)) return mrb_nil_value();
@@ -122,7 +156,7 @@ debug_code_fetch_hook(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc, 
   int should_break = mrb_debugger_should_break_p(mrb, self, file, line);
   if (!should_break && !watching) return;
   /* Bind before debug_invoke_on_break switches away from the paused frame. */
-  mrb_value binding = debug_make_binding(mrb, mrb->c, mrb->c->ci);
+  mrb_value binding = mrb_debug_frame_binding(mrb, mrb->c, mrb->c->ci);
   debug_invoke_on_break(mrb, self, file, line, binding, should_break);
 }
 
