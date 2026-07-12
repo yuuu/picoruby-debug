@@ -24,4 +24,10 @@ mrb_callinfo *mrb_debug_frame_at(mrb_state *mrb, struct mrb_context *c, int dept
 mrb_bool mrb_debug_frame_position(mrb_state *mrb, mrb_callinfo *ci, mrb_bool is_top, int32_t *line, const char **file);
 mrb_value mrb_debug_frame_binding(mrb_state *mrb, struct mrb_context *c, mrb_callinfo *ci);
 
+/* debug.c's debug_invoke_on_break records the paused task's context here
+ * (before swapping mrb->c to call Debugger#on_break) so the frame_count/
+ * frame_position/frame_binding methods exposed to Ruby can walk the paused
+ * stack while mrb->c itself points elsewhere for the duration of on_break. */
+void mrb_debugger_set_paused_context(mrb_state *mrb, mrb_value self, struct mrb_context *c);
+
 #endif /* PICORUBY_DEBUG_DEBUGGER_H */
