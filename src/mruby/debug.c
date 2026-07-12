@@ -3,6 +3,7 @@
 #include <mruby/presym.h>
 #include <mruby/class.h>
 #include <mruby/debug.h>
+#include <mruby/error.h> /* mrb_protect_error; core, no mruby-error gem needed */
 #include <mruby/irep.h> /* irep->iseq; debug.h only fwd-decls mrb_irep */
 #include <mruby/proc.h> /* MRB_PROC_CFUNC_P */
 #include <mruby/variable.h>
@@ -42,14 +43,30 @@ debug_current_line(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc)
   return mrb_debug_get_line(mrb, irep, off);
 }
 
+/* Userdata + trampoline for the mrb_protect_error-wrapped on_break funcall
+ * below: mrb_protect_error only passes a single void* through. */
+struct on_break_call {
+  mrb_value self, file, line, binding, real_stop;
+};
+
+static mrb_value
+call_on_break(mrb_state *mrb, void *userdata)
+{
+  struct on_break_call *c = (struct on_break_call *)userdata;
+  return mrb_funcall_id(mrb, c->self, MRB_SYM(on_break), 4, c->file, c->line, c->binding, c->real_stop);
+}
+
 /* Call Debugger#on_break. A funcall on the same context would realloc the
  * task's stack and dangle the enclosing mrb_vm_exec's cached ci/regs, so
  * switch to the previous context; the hook is disabled during the call to
  * avoid recursion. `real_stop` is false for a watch-forced per-line visit
  * with no other reason to stop; on_break then returns silently unless a
  * watch changed.
- * TODO: mrb_protect the funcall so an exception can't escape with the
- * hook/context swapped out. */
+ * mrb_protect_error keeps an exception that escapes on_break (e.g. a bug in
+ * a display/watch expression's rescue-less path) from propagating into the
+ * debugged task with the hook disabled and mrb->c swapped out; it's core
+ * mruby (src/vm.c), unlike mrb_protect/mrb_rescue which need the
+ * mruby-error gem this gem doesn't depend on. */
 static void
 debug_invoke_on_break(mrb_state *mrb, mrb_value self, const char *file, int32_t line, mrb_value binding, int real_stop)
 {
@@ -64,7 +81,8 @@ debug_invoke_on_break(mrb_state *mrb, mrb_value self, const char *file, int32_t 
   mrb_debugger_set_paused_context(mrb, self, task_c);
   if (task_c->prev) mrb->c = task_c->prev;
 
-  mrb_funcall_id(mrb, self, MRB_SYM(on_break), 4, fv, lv, binding, rv);
+  struct on_break_call call = { self, fv, lv, binding, rv };
+  mrb_protect_error(mrb, call_on_break, &call, NULL);
 
   mrb->c = task_c;
   if (mrb_debugger_quit_requested_p(mrb, self)) {
