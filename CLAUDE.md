@@ -233,15 +233,64 @@ build/host/bin/picoruby /path/to/script.rb
   never shift. The same stable-numbering convention is used for watchpoints
   and display expressions.
 - **`mrblib/dap_transport.rb`**: `DapTransport` — DAP wire-format framing
-  (`Content-Length: <n>\r\n\r\n<json>`) and TCP I/O only, no DAP semantics
-  yet (see README's "DAP transport" section). Not yet wired into
-  `Debugger`/`on_break`; `run_echo_loop` just proves the framing/IO. Pure
-  Ruby, no C counterpart — same reasoning as `display.rb`, this is
+  (`Content-Length: <n>\r\n\r\n<json>`) and TCP I/O only, no DAP semantics.
+  Pure Ruby, no C counterpart — same reasoning as `display.rb`, this is
   transport plumbing, not a VM mechanic. `picoruby-socket` is a soft
   dependency (`DapTransport.available?`, `Object.const_defined?`-style
   like `picoruby-bdffont`'s optional font gems), unlike `picoruby-json`
   (hard dependency, needed unconditionally to parse/generate the JSON
   payload).
+- **`mrblib/dap_session.rb`**: `DapSession` — the DAP request/response layer
+  on top of `DapTransport`, a second front end over the same core
+  `Debugger` operations `dispatch_command` uses (mirrors ruby/debug's "REPL
+  and DAP are separate front ends over one internal session API"). See
+  README's "DAP support" section for the request list and enabling it.
+  Two methods matter for how it's wired into `Debugger#on_break`
+  (`mrblib/debugger.rb`):
+  - `perform_handshake(debugger)`: blocks on `DapTransport#listen` and
+    processes `initialize`/`attach`/`launch`/`setBreakpoints` until
+    `configurationDone`, then returns `true`. Memoized (`@handshake_done`)
+    so it's a no-op on every stop after the first. `on_break` calls this
+    *before* reporting anything, since this debugger only starts watching
+    for breakpoints from the first `binding.debugger` call onward — that
+    call's own `on_break` is the one place "the script hasn't run yet" and
+    "we can still talk to a client" overlap. If the handshake never
+    completes (dropped connection), `on_break` sets `@dap_session = nil`
+    and falls through to the normal CLI prompt for the rest of the script.
+  - `run_request_loop(debugger)`: sends a `stopped` event, then processes
+    requests (`stackTrace`/`scopes`/`variables`/`evaluate`/`setBreakpoints`/
+    `threads` don't return; `continue`/`next`/`stepIn`/`stepOut`/
+    `disconnect` do, after calling the matching `Debugger` mode setter) until
+    one resumes execution or the client disconnects. Every request is
+    dispatched inside a `rescue` that turns an unexpected error into a
+    `success: false` response instead of letting it escape into
+    `debug_invoke_on_break`'s `mrb_protect_error`, which would otherwise
+    swallow it silently and leave the client hanging with no response at
+    all.
+  - `variables`'s handler filters out empty-named entries from
+    `Binding#local_variables`: at least one PicoRuby/Prism-compiler-internal
+    local slot surfaces there with a name (not caught by
+    `mrb_proc_local_variables`'s own `'*'`/`'&'`-prefix filter), and
+    `local_variable_get` raises `NameError` for it.
+  - `stepOut` needs `DBG_MODE_STEP_OUT` (`src/mruby/debugger.c`), added
+    alongside the existing RUN/STEP/NEXT modes: NEXT's stop condition is
+    `next_ci >= current_ci` (same-or-shallower frame), which already covers
+    "step over"; `stepOut` needs the *strict* `next_ci > current_ci`
+    (only a shallower frame) so it doesn't also stop back in the same
+    frame it's leaving. `mrb_debugger_update_next_ci`'s NEXT-only snapshot
+    condition was extended to include `DBG_MODE_STEP_OUT` too.
+  - A `Debugger` instance is created once, by the first `binding.debugger`
+    call (see `mrb_binding_debugger` in `src/mruby/debug.c`) — there's no
+    instance to call an enabling method on any earlier than that, hence
+    `Debugger.listen_dap`/`.dap_port` being class-level rather than normal
+    instance methods, read back in `Debugger#initialize`.
+  - `send_response`/`send_event` build the JSON body as Hash literals passed
+    as a real second positional argument (`send_response(req, { key: val })`,
+    not `send_response(req, key: val)`): `send_response` has real keyword
+    parameters (`success:`/`message:`), so a bare trailing `key: val` in a
+    call is parsed as (mismatched, `ArgumentError`-raising) keywords for
+    *that* call, not an implicit Hash for the preceding positional `body`
+    param.
 
 ## Dependencies
 
@@ -279,3 +328,8 @@ build/host/bin/picoruby /path/to/script.rb
   `picoruby-editor` class also used by `picoruby-shell`) to preserve
   unconsumed input across a break-triggered exit from `start`, which is out
   of scope for this gem alone.
+- `DapSession` has no hook for "the debugged script finished running to
+  completion" (nothing calls back into Ruby when that happens), so the
+  `terminated` event is only ever sent in response to an explicit
+  `disconnect` request, never on natural script end.
+- `watch`/`display` aren't surfaced over DAP at all yet (CLI-only).
