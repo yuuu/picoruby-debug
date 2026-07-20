@@ -2,19 +2,18 @@ require 'sandbox'
 
 class Debugger
   LIST_RADIUS = 5
+  DEFAULT_DAP_PORT = 4711
 
-  # Enables a DAP session for the *next* Debugger instance (the one the
-  # first binding.debugger call creates -- see mrb_binding_debugger in
-  # src/mruby/debug.c). There's no Debugger instance to call this on
-  # earlier than that, so it's a class-level switch rather than a normal
-  # instance method; ENV['PRDB_DAP_PORT'] is the equivalent zero-code-change
-  # knob for launchers that can't add a `Debugger.listen_dap` call.
-  def self.listen_dap(port)
+  # Enables a DAP session for the next Debugger instance (the first
+  # binding.debugger call creates it -- see mrb_binding_debugger in
+  # src/mruby/debug.c). Not calling this at all defaults to DEFAULT_DAP_PORT
+  # (see .dap_port); pass a falsy port to opt back out of DAP entirely.
+  def self.listen_dap(port = DEFAULT_DAP_PORT)
     @dap_port = port
   end
 
   def self.dap_port
-    @dap_port || (ENV['PRDB_DAP_PORT'] && ENV['PRDB_DAP_PORT'].to_i)
+    defined?(@dap_port) ? @dap_port : DEFAULT_DAP_PORT
   end
 
   def initialize

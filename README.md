@@ -83,19 +83,12 @@ the `(prdb)` prompt. Two pieces make this up:
   `stopped` and `terminated` events. Unhandled requests or a bug in a
   handler get a `success: false` response rather than aborting the session.
 
-Enable it with `Debugger.listen_dap(port)` (or the equivalent
-`ENV['PRDB_DAP_PORT']`, for launchers that can't add a line of Ruby) *before*
-the script's first `binding.debugger` call — that first call is this
-debugger's only entry point, so it's also the one point where "the script
-hasn't started running yet" and "we can still talk to a client" overlap:
-it blocks there until a client completes the
-`initialize`/`attach`/`setBreakpoints`/`configurationDone` handshake, then
-reports that first stop (reason `"entry"`) and every subsequent one the
-same way over the same connection.
+Wherever `DapTransport.available?` (i.e. `picoruby-socket` is in the build),
+DAP is **on by default** on port 4711 (`Debugger::DEFAULT_DAP_PORT`) — just
+`require 'debug'` and `binding.debugger` is enough:
 
 ```ruby
 require 'debug'
-Debugger.listen_dap(4711)
 
 def add(a, b)
   a + b
@@ -105,10 +98,22 @@ binding.debugger
 puts add(1, 2)
 ```
 
+The first `binding.debugger` call is this debugger's only entry point, so
+it's also the one point where "the script hasn't started running yet" and
+"we can still talk to a client" overlap: it blocks there until a client
+completes the `initialize`/`attach`/`setBreakpoints`/`configurationDone`
+handshake, then reports that first stop (reason `"entry"`) and every
+subsequent one the same way over the same connection.
+
+Use a different port with `Debugger.listen_dap(port)`, called *before* the
+script's first `binding.debugger`. Pass a falsy port
+(`Debugger.listen_dap(nil)`/`listen_dap(false)`) to opt back out of DAP
+entirely and fall back to the plain `(prdb)` prompt.
+
 `picoruby-socket` is **not** a hard dependency of this gem — a build without
 it still compiles, `DapTransport.available?` returns `false`, and the above
-just runs under the normal `(prdb)` prompt instead. Add `picoruby-socket` to
-your build config to actually use it.
+just runs under the normal `(prdb)` prompt instead regardless of the default
+port. Add `picoruby-socket` to your build config to actually use it.
 
 ## Installation
 
