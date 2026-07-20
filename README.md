@@ -9,6 +9,18 @@ which checks each new source line against the registered breakpoints and,
 when the current mode says to stop, calls back into Ruby (`Debugger#on_break`)
 to show an interactive prompt.
 
+## Installation
+
+Add the following line to your build configuration:
+
+```ruby
+conf.gem github: 'yuuu/picoruby-debug', branch: 'main'
+```
+
+This gem does not depend on `ENV['PICORB_DEBUG']` or any other build flag —
+adding it to the gem list is enough to enable `binding.debugger` support, on
+any target (POSIX host, ESP32, etc.).
+
 ## Usage
 
 ```ruby
@@ -101,18 +113,6 @@ entirely and fall back to the plain `(prdb)` prompt.
 it still compiles, `DapTransport.available?` returns `false`, and the above
 just runs under the normal `(prdb)` prompt instead regardless of the default
 port. Add `picoruby-socket` to your build config to actually use it.
-
-## Installation
-
-Add the following line to your build configuration:
-
-```ruby
-conf.gem github: 'yuuu/picoruby-debug', branch: 'main'
-```
-
-This gem does not depend on `ENV['PICORB_DEBUG']` or any other build flag —
-adding it to the gem list is enough to enable `binding.debugger` support, on
-any target (POSIX host, ESP32, etc.).
 
 ## Dependencies
 
