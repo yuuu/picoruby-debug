@@ -3,6 +3,20 @@ require 'sandbox'
 class Debugger
   LIST_RADIUS = 5
 
+  # Enables a DAP session for the *next* Debugger instance (the one the
+  # first binding.debugger call creates -- see mrb_binding_debugger in
+  # src/mruby/debug.c). There's no Debugger instance to call this on
+  # earlier than that, so it's a class-level switch rather than a normal
+  # instance method; ENV['PRDB_DAP_PORT'] is the equivalent zero-code-change
+  # knob for launchers that can't add a `Debugger.listen_dap` call.
+  def self.listen_dap(port)
+    @dap_port = port
+  end
+
+  def self.dap_port
+    @dap_port || (ENV['PRDB_DAP_PORT'] && ENV['PRDB_DAP_PORT'].to_i)
+  end
+
   def initialize
     @displays = []
     require 'editor' # To save memory
@@ -20,6 +34,8 @@ class Debugger
         self.prompt = "(prdb)"
       end
     end.new
+    port = self.class.dap_port
+    @dap_session = DapSession.new(DapTransport.new(port)) if port && DapTransport.available?
   end
 
   def show_source(file, current_line, center)
@@ -53,18 +69,24 @@ class Debugger
     end
   end
 
-  def print_expr(bnd, expr)
-    if bnd.nil?
-      puts "No binding available for this breakpoint"
-      return
-    end
+  # Shared by the CLI's `p`/`print` and DapSession's `evaluate` request:
+  # evaluate expr against bnd, returning [success, message-or-inspected-
+  # result] rather than printing, so DAP can put the result in a response
+  # body instead of stdout.
+  def evaluate_expression(bnd, expr)
+    return [false, "No binding available for this breakpoint"] if bnd.nil?
     begin
       result = bnd.eval(expr)
-      puts result.inspect
+      [true, result.inspect]
     rescue Exception => e
       # Exception, not StandardError: a bad expression can raise SyntaxError,
-      puts "#{e.class}: #{e.message}"
+      [false, "#{e.class}: #{e.message}"]
     end
+  end
+
+  def print_expr(bnd, expr)
+    _ok, message = evaluate_expression(bnd, expr)
+    puts message
   end
 
   def add_display_cmd(bnd, expr)
@@ -163,6 +185,20 @@ class Debugger
 
   def list_breakpoints
     list_entries(breakpoints, "No breakpoints set")
+  end
+
+  # DapSession's setBreakpoints handler: DAP sends "the full current set
+  # for this file" on every call, unlike add_breakpoint's append-only/
+  # stable-numbering CLI design, so reconcile by deactivating this file's
+  # existing breakpoints (suffix-matched, same rule the hot path uses) and
+  # re-adding the requested lines.
+  def reconcile_breakpoints(file, lines)
+    breakpoints.each_with_index do |bp, i|
+      next unless bp.active?
+      next if bp.file.empty? || !file.end_with?(bp.file)
+      remove_breakpoint(i + 1)
+    end
+    lines.each { |line| add_breakpoint(file, line) }
   end
 
   def print_backtrace
@@ -267,6 +303,32 @@ class Debugger
   def on_break(file, line, bnd, real_stop)
     changes = check_watches(bnd)
     return if !real_stop && changes.empty?
+
+    if @dap_session
+      # DAP requires initialize/attach/setBreakpoints/configurationDone
+      # before any breakpoint can fire, but this debugger only starts
+      # watching for breakpoints from the first binding.debugger call
+      # onward -- so that call's own on_break is the one and only place
+      # "the script hasn't run yet" and "we can still talk to a client"
+      # overlap. A dropped connection during the handshake just leaves the
+      # session running under the CLI below for the rest of the script.
+      if @dap_session.perform_handshake(self)
+        @dap_session.run_request_loop(self)
+        return
+      end
+      @dap_session = nil
+    end
+
+    cli_on_break(file, line, bnd, changes)
+  end
+
+  private
+
+  # The interactive (prdb) prompt loop, split out from on_break so its
+  # `ensure` (terminal mode restore) stays scoped to a path that always
+  # assigns prev_term first -- on_break itself can return earlier than
+  # this, via the DAP branch above, without ever touching the terminal.
+  def cli_on_break(file, line, bnd, changes)
     puts
     puts "Breakpoint: #{file}:#{line}"
     changes.each { |m| puts m }
