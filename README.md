@@ -35,34 +35,21 @@ against the file the breakpoint applies to, so `b test.rb:8` matches
 
 Commands at the prompt:
 
-- `c` / `continue` / *(empty)* — resume execution until the next breakpoint
-- `s` / `step` — stop at the next line, stepping into calls
-- `n` / `next` — stop at the next line in the same/shallower frame
-- `q` / `quit` — stop the script
-- `bt` / `where` — show the full call stack, innermost frame first
-  (`#0`, `#1`, ...); a frame with no Ruby-level position (e.g. a C frame) is
-  omitted
-- `b` / `break [<file>:]<line>` — add a breakpoint, or list the current
-  breakpoints (with their numbers) if no argument is given
-- `d` / `delete [<number>]` — delete breakpoint `<number>` (as shown by `b`
-  with no argument), or all breakpoints if no number is given
-- `l` / `list [<line>]` — show the source around the current line, or around
-  `<line>` if given (10 lines of context, current line marked with `=>`)
-- `p` / `print <expression>` — evaluate `<expression>` against the paused
-  frame's locals and print the result (via `Binding#eval`); unavailable if no
-  binding could be built for the current frame
-- `disp` / `display <expression>` — register an expression to be
-  automatically evaluated and shown every time execution stops, or list the
-  currently registered display expressions (with their numbers) if no
-  argument is given
-- `undisp` / `undisplay [<number>]` — remove display expression `<number>`
-  (as shown by `display` with no argument), or all of them if no number is
-  given
-- `w` / `watch <expression>` — stop execution automatically whenever
-  `<expression>`'s value changes, or list the currently registered
-  watchpoints (with their numbers) if no argument is given
-- `uw` / `unwatch [<number>]` — remove watchpoint `<number>` (as shown by
-  `watch` with no argument), or all of them if no number is given
+| Command | Description |
+| --- | --- |
+| `c` / `continue` / *(empty)* | Resume execution until the next breakpoint |
+| `s` / `step` | Stop at the next line, stepping into calls |
+| `n` / `next` | Stop at the next line in the same/shallower frame |
+| `q` / `quit` | Stop the script |
+| `bt` / `where` | Show the full call stack, innermost frame first (`#0`, `#1`, ...); a frame with no Ruby-level position (e.g. a C frame) is omitted |
+| `b` / `break [<file>:]<line>` | Add a breakpoint, or list the current breakpoints (with their numbers) if no argument is given |
+| `d` / `delete [<number>]` | Delete breakpoint `<number>` (as shown by `b` with no argument), or all breakpoints if no number is given |
+| `l` / `list [<line>]` | Show the source around the current line, or around `<line>` if given (10 lines of context, current line marked with `=>`) |
+| `p` / `print <expression>` | Evaluate `<expression>` against the paused frame's locals and print the result (via `Binding#eval`); unavailable if no binding could be built for the current frame |
+| `disp` / `display <expression>` | Register an expression to be automatically evaluated and shown every time execution stops, or list the currently registered display expressions (with their numbers) if no argument is given |
+| `undisp` / `undisplay [<number>]` | Remove display expression `<number>` (as shown by `display` with no argument), or all of them if no number is given |
+| `w` / `watch <expression>` | Stop execution automatically whenever `<expression>`'s value changes, or list the currently registered watchpoints (with their numbers) if no argument is given |
+| `uw` / `unwatch [<number>]` | Remove watchpoint `<number>` (as shown by `watch` with no argument), or all of them if no number is given |
 
 ## DAP transport (experimental, POSIX only)
 
