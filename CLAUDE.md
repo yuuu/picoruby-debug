@@ -251,14 +251,6 @@ build/host/bin/picoruby /path/to/script.rb
 
 ## Known gaps (in progress)
 
-- No `mrb_protect` around the `on_break` funcall in general. This used to
-  also cover Ctrl-C from `gets` escaping with the hook/context swapped out,
-  but that specific case is now closed: `on_break`'s prompt loop is built on
-  `Editor::Line#start` (see `Debugger#initialize`/`#on_break` in
-  `mrblib/debugger.rb`), which already `rescue`s `Interrupt` internally
-  around its own `read_nonblock` call and never lets it propagate out of
-  `on_break`. Other exception sources escaping the funcall unprotected is
-  still an open, unrelated gap.
 - `Editor::Line#start`'s per-poll `STDIN.read_nonblock(255)` can read more
   than one full command (with its trailing Enter) into its local `line`
   buffer in a single call — e.g. multiple commands piped/pasted at once. If
