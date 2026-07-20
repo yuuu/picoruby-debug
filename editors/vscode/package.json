@@ -1,0 +1,78 @@
+{
+  "name": "vscode-picoruby-debug",
+  "displayName": "PicoRuby Debug",
+  "description": "Attach VS Code to picoruby-debug's DAP server (Debugger.listen_dap) over WiFi",
+  "version": "0.1.0",
+  "license": "MIT",
+  "publisher": "yuuu",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers"
+  ],
+  "activationEvents": [
+    "onDebug"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  },
+  "contributes": {
+    "breakpoints": [
+      {
+        "language": "ruby"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "picoruby",
+        "label": "PicoRuby (DAP over WiFi)",
+        "languages": [
+          "ruby"
+        ],
+        "configurationAttributes": {
+          "attach": {
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "Hostname or IP address of the device running Debugger.listen_dap.",
+                "default": "localhost"
+              },
+              "port": {
+                "type": "number",
+                "description": "Port passed to Debugger.listen_dap on the device.",
+                "default": 4711
+              },
+              "localRoot": {
+                "type": "string",
+                "description": "Local directory containing the same Ruby source files running on the device (default: workspace folder). Used to resolve the device's on-disk paths to local files by filename.",
+                "default": "${workspaceFolder}"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "picoruby",
+            "request": "attach",
+            "name": "Attach to PicoRuby (WiFi DAP)",
+            "host": "localhost",
+            "port": 4711,
+            "localRoot": "${workspaceFolder}"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -22,6 +22,7 @@ typedef enum {
   DBG_MODE_RUN = 0,
   DBG_MODE_STEP,
   DBG_MODE_NEXT,
+  DBG_MODE_STEP_OUT,
 } debug_mode;
 
 /* The Debugger's own state. Hook-mechanism bookkeeping (active instance,
@@ -214,6 +215,17 @@ mrb_debugger_set_next_mode(mrb_state *mrb, mrb_value self)
   return mrb_true_value();
 }
 
+/* Like NEXT, but only stops in a strictly shallower frame than the
+ * snapshot (see mrb_debugger_should_break_p): "step out" should finish the
+ * current frame and stop in its caller, not at the current frame's own
+ * next line. Used by DapSession's stepOut. */
+static mrb_value
+mrb_debugger_set_step_out_mode(mrb_state *mrb, mrb_value self)
+{
+  debugger_state(mrb, self)->mode = DBG_MODE_STEP_OUT;
+  return mrb_true_value();
+}
+
 static mrb_value
 mrb_debugger_request_quit(mrb_state *mrb, mrb_value self)
 {
@@ -268,6 +280,10 @@ mrb_debugger_should_break_p(mrb_state *mrb, mrb_value self, const char *file, in
     /* Lower ci address = shallower frame; deeper than the snapshot means we
      * stepped into a call. */
     return (intptr_t)d->next_ci >= (intptr_t)mrb->c->ci;
+  case DBG_MODE_STEP_OUT:
+    /* Strictly shallower than the snapshot: unlike NEXT, don't stop again
+     * at the same frame's own next line. */
+    return (intptr_t)d->next_ci > (intptr_t)mrb->c->ci;
   case DBG_MODE_RUN:
   default:
     for (int i = 0; i < d->breakpoint_count; i++) {
@@ -290,7 +306,9 @@ void
 mrb_debugger_update_next_ci(mrb_state *mrb, mrb_value self, int real_stop)
 {
   picoruby_debugger *d = debugger_state(mrb, self);
-  if (real_stop && d->mode == DBG_MODE_NEXT) d->next_ci = mrb->c->ci;
+  if (real_stop && (d->mode == DBG_MODE_NEXT || d->mode == DBG_MODE_STEP_OUT)) {
+    d->next_ci = mrb->c->ci;
+  }
 }
 
 void
@@ -422,6 +440,7 @@ mrb_picoruby_debug_debugger_init(mrb_state *mrb)
   mrb_define_method_id(mrb, debugger, MRB_SYM(set_run_mode), mrb_debugger_set_run_mode, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, debugger, MRB_SYM(set_step_mode), mrb_debugger_set_step_mode, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, debugger, MRB_SYM(set_next_mode), mrb_debugger_set_next_mode, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, debugger, MRB_SYM(set_step_out_mode), mrb_debugger_set_step_out_mode, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, debugger, MRB_SYM(request_quit), mrb_debugger_request_quit, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, debugger, MRB_SYM(frame_count), mrb_debugger_frame_count, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, debugger, MRB_SYM(frame_position), mrb_debugger_frame_position, MRB_ARGS_REQ(1));

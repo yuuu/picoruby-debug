@@ -16,16 +16,47 @@ debug_strlen(const char *s)
   return n;
 }
 
+/* Index of the start of the filename component within the first `len` bytes
+ * of `s` (i.e. just past the last '/', or 0 if there is none). */
+static int
+debug_basename_offset(const char *s, int len)
+{
+  int i = len;
+  while (i > 0 && s[i - 1] != '/') i--;
+  return i;
+}
+
+/* `suffix` (whatever a DAP client sent, e.g. via setBreakpoints) matches
+ * `full` (the interpreter's own running-file path, e.g. "./foo.rb") if
+ * `full` ends with `suffix` byte-for-byte -- this lets a bare CLI breakpoint
+ * like "foo.rb" or "lib/foo.rb" match a longer running path.
+ *
+ * A real DAP client (VS Code, Zed, ...) instead sends its own full local
+ * absolute path, which is longer than the device's own short running path
+ * and never shares a literal byte-for-byte suffix with it (the device's
+ * "./foo.rb" has no absolute path ending in literal "./foo.rb" characters).
+ * That direction can only be resolved by filename: fall back to comparing
+ * just the last path component of each. */
 static int
 debug_file_match(const char *full, const char *suffix)
 {
   if (!full || !suffix) return 0;
   int lf = debug_strlen(full);
   int ls = debug_strlen(suffix);
-  if (ls > lf) return 0;
-  const char *tail = full + (lf - ls);
-  for (int i = 0; i < ls; i++) {
-    if (tail[i] != suffix[i]) return 0;
+  if (ls <= lf) {
+    const char *tail = full + (lf - ls);
+    for (int i = 0; i < ls; i++) {
+      if (tail[i] != suffix[i]) return 0;
+    }
+    return 1;
+  }
+  int full_base = debug_basename_offset(full, lf);
+  int suffix_base = debug_basename_offset(suffix, ls);
+  int flen = lf - full_base;
+  int slen = ls - suffix_base;
+  if (flen != slen) return 0;
+  for (int i = 0; i < flen; i++) {
+    if (full[full_base + i] != suffix[suffix_base + i]) return 0;
   }
   return 1;
 }
