@@ -6,6 +6,7 @@ MRuby::Gem::Specification.new('picoruby-debug') do |spec|
   spec.add_dependency 'picoruby-sandbox'
   spec.add_dependency 'picoruby-editor'
   spec.add_dependency 'picoruby-io-console'
+  spec.add_dependency 'picoruby-json'
   if build.vm_mruby?
     spec.add_dependency 'mruby-binding', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-binding"
     spec.add_dependency 'mruby-eval', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-eval"

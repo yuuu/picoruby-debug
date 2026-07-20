@@ -232,6 +232,16 @@ build/host/bin/picoruby /path/to/script.rb
   in place rather than compacting the array, so existing breakpoint numbers
   never shift. The same stable-numbering convention is used for watchpoints
   and display expressions.
+- **`mrblib/dap_transport.rb`**: `DapTransport` — DAP wire-format framing
+  (`Content-Length: <n>\r\n\r\n<json>`) and TCP I/O only, no DAP semantics
+  yet (see README's "DAP transport" section). Not yet wired into
+  `Debugger`/`on_break`; `run_echo_loop` just proves the framing/IO. Pure
+  Ruby, no C counterpart — same reasoning as `display.rb`, this is
+  transport plumbing, not a VM mechanic. `picoruby-socket` is a soft
+  dependency (`DapTransport.available?`, `Object.const_defined?`-style
+  like `picoruby-bdffont`'s optional font gems), unlike `picoruby-json`
+  (hard dependency, needed unconditionally to parse/generate the JSON
+  payload).
 
 ## Dependencies
 
@@ -247,7 +257,9 @@ build/host/bin/picoruby /path/to/script.rb
   does not, so without this the terminal reverts to cooked/echoing mode
   between `Editor::Line`'s polls and every character gets echoed twice).
 - `picoruby-machine` (for `picorb_hal_write`, stdio-free console output)
+- `picoruby-json` (`DapTransport`'s message parsing/generation)
 - mruby only: `mruby-binding`, `mruby-eval`
+- `picoruby-socket` (optional, soft dependency — `DapTransport` only)
 
 ## Known gaps (in progress)
 
