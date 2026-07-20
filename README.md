@@ -39,7 +39,9 @@ Commands at the prompt:
 - `s` / `step` — stop at the next line, stepping into calls
 - `n` / `next` — stop at the next line in the same/shallower frame
 - `q` / `quit` — stop the script
-- `bt` / `where` — show the current location (full backtrace is a future step)
+- `bt` / `where` — show the full call stack, innermost frame first
+  (`#0`, `#1`, ...); a frame with no Ruby-level position (e.g. a C frame) is
+  omitted
 - `b` / `break [<file>:]<line>` — add a breakpoint, or list the current
   breakpoints (with their numbers) if no argument is given
 - `d` / `delete [<number>]` — delete breakpoint `<number>` (as shown by `b`

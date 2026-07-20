@@ -36,6 +36,7 @@ typedef struct {
   debug_mode        mode;
   mrb_callinfo     *next_ci;
   int               quit_requested;
+  struct mrb_context *paused_c; /* set by debug.c around the on_break funcall */
 } picoruby_debugger;
 
 static void
@@ -73,6 +74,7 @@ debugger_state(mrb_state *mrb, mrb_value self)
     d->mode = DBG_MODE_RUN;
     d->next_ci = NULL;
     d->quit_requested = 0;
+    d->paused_c = NULL;
     mrb_data_init(self, d, &picoruby_debugger_type);
   }
   return d;
@@ -350,6 +352,59 @@ mrb_debug_frame_binding(mrb_state *mrb, struct mrb_context *c, mrb_callinfo *ci)
 }
 
 void
+mrb_debugger_set_paused_context(mrb_state *mrb, mrb_value self, struct mrb_context *c)
+{
+  debugger_state(mrb, self)->paused_c = c;
+}
+
+/* --- Ruby-facing frame API (mrblib/debugger.rb's bt/where), thin wrappers
+ * around the frame-walking API above, resolved against the context
+ * mrb_debugger_set_paused_context recorded (mrb->c itself points at the
+ * on_break caller's context for the duration of the on_break funcall). */
+static mrb_value
+mrb_debugger_frame_count(mrb_state *mrb, mrb_value self)
+{
+  struct mrb_context *c = debugger_state(mrb, self)->paused_c;
+  if (!c) return mrb_fixnum_value(0);
+  return mrb_fixnum_value(mrb_debug_frame_count(mrb, c));
+}
+
+static mrb_value
+mrb_debugger_frame_position(mrb_state *mrb, mrb_value self)
+{
+  mrb_int depth;
+  mrb_get_args(mrb, "i", &depth);
+
+  struct mrb_context *c = debugger_state(mrb, self)->paused_c;
+  if (!c) return mrb_nil_value();
+  mrb_callinfo *ci = mrb_debug_frame_at(mrb, c, (int)depth);
+  if (!ci) return mrb_nil_value();
+
+  int32_t line;
+  const char *file;
+  if (!mrb_debug_frame_position(mrb, ci, depth == 0, &line, &file)) return mrb_nil_value();
+
+  mrb_value ary = mrb_ary_new_capa(mrb, 2);
+  mrb_ary_push(mrb, ary, mrb_str_new_cstr(mrb, file));
+  mrb_ary_push(mrb, ary, mrb_fixnum_value(line));
+  return ary;
+}
+
+static mrb_value
+mrb_debugger_frame_binding(mrb_state *mrb, mrb_value self)
+{
+  mrb_int depth;
+  mrb_get_args(mrb, "i", &depth);
+
+  struct mrb_context *c = debugger_state(mrb, self)->paused_c;
+  if (!c) return mrb_nil_value();
+  mrb_callinfo *ci = mrb_debug_frame_at(mrb, c, (int)depth);
+  if (!ci) return mrb_nil_value();
+
+  return mrb_debug_frame_binding(mrb, c, ci);
+}
+
+void
 mrb_picoruby_debug_debugger_init(mrb_state *mrb)
 {
   struct RClass *debugger = mrb_define_class_id(mrb, MRB_SYM(Debugger), mrb->object_class);
@@ -368,4 +423,7 @@ mrb_picoruby_debug_debugger_init(mrb_state *mrb)
   mrb_define_method_id(mrb, debugger, MRB_SYM(set_step_mode), mrb_debugger_set_step_mode, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, debugger, MRB_SYM(set_next_mode), mrb_debugger_set_next_mode, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, debugger, MRB_SYM(request_quit), mrb_debugger_request_quit, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, debugger, MRB_SYM(frame_count), mrb_debugger_frame_count, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, debugger, MRB_SYM(frame_position), mrb_debugger_frame_position, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, debugger, MRB_SYM(frame_binding), mrb_debugger_frame_binding, MRB_ARGS_REQ(1));
 }

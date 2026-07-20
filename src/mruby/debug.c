@@ -59,6 +59,9 @@ debug_invoke_on_break(mrb_state *mrb, mrb_value self, const char *file, int32_t 
   mrb_value lv = mrb_fixnum_value(line);
   mrb_value rv = mrb_bool_value(real_stop);
   struct mrb_context *task_c = mrb->c;
+  /* Let Debugger#frame_count/frame_position/frame_binding (mrblib's bt/where)
+   * walk the paused stack even though mrb->c points elsewhere below. */
+  mrb_debugger_set_paused_context(mrb, self, task_c);
   if (task_c->prev) mrb->c = task_c->prev;
 
   mrb_funcall_id(mrb, self, MRB_SYM(on_break), 4, fv, lv, binding, rv);

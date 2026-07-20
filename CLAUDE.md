@@ -251,7 +251,6 @@ build/host/bin/picoruby /path/to/script.rb
 
 ## Known gaps (in progress)
 
-- `bt`/`where` prints only the current location, not a real backtrace.
 - No `mrb_protect` around the `on_break` funcall in general. This used to
   also cover Ctrl-C from `gets` escaping with the hook/context swapped out,
   but that specific case is now closed: `on_break`'s prompt loop is built on

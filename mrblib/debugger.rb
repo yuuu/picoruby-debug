@@ -165,6 +165,19 @@ class Debugger
     list_entries(breakpoints, "No breakpoints set")
   end
 
+  def print_backtrace
+    count = frame_count
+    if count == 0
+      puts "No frame information available"
+      return
+    end
+    count.times do |depth|
+      pos = frame_position(depth)
+      next unless pos # e.g. the C frame a binding.debugger call itself runs in
+      puts "  ##{depth} #{pos[0]}:#{pos[1]}"
+    end
+  end
+
   def list_entries(collection, empty_message)
     shown = false
     collection.each_with_index do |bp, i|
@@ -233,7 +246,7 @@ class Debugger
           request_quit
           break
         when "bt", "where"
-          puts "  #{file}:#{line}" # TODO: real backtrace
+          print_backtrace
         when "l", "list"
           center = arg ? arg.to_i : line
           center = line if center <= 0
