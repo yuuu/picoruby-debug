@@ -4,8 +4,7 @@
 #include <mruby/class.h>
 #include <mruby/debug.h>
 #include <mruby/irep.h> /* irep->iseq; debug.h only fwd-decls mrb_irep */
-#include <mruby/proc.h>
-#include <mruby/internal.h> /* mrb_env_new; must follow proc.h (MRUBY_PROC_H-gated) */
+#include <mruby/proc.h> /* MRB_PROC_CFUNC_P */
 #include <mruby/variable.h>
 
 #include "../../include/breakpoint.h"
@@ -13,9 +12,6 @@
 #include "../../include/watch_breakpoint.h"
 #include "../../include/debugger.h"
 #include "../../include/debug.h"
-
-/* Defined in mruby-binding/src/binding.c; no public header declares it. */
-mrb_value mrb_binding_new(mrb_state *mrb, const struct RProc *proc, mrb_value recv, struct REnv *env);
 
 /* No console output from C: printing happens on the Ruby side, keeping this
  * gem free of HAL/stdio dependencies. */
@@ -44,23 +40,6 @@ debug_current_line(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc)
 {
   uint32_t off = (uint32_t)(pc - irep->iseq);
   return mrb_debug_get_line(mrb, irep, off);
-}
-
-/* Build a Binding for ci's frame (same boxing as Kernel#binding); nil for a
- * C frame. */
-static mrb_value
-debug_make_binding(mrb_state *mrb, struct mrb_context *c, mrb_callinfo *ci)
-{
-  const struct RProc *proc = ci->proc;
-  if (!proc || MRB_PROC_CFUNC_P(proc)) return mrb_nil_value();
-  struct REnv *env = mrb_vm_ci_env(ci);
-  if (!env) {
-    int nstacks = proc->body.irep->nlocals;
-    env = mrb_env_new(mrb, c, ci, nstacks, ci->stack, mrb_vm_ci_target_class(ci));
-    ci->u.env = env;
-  }
-  mrb_value recv = ci->stack[0];
-  return mrb_binding_new(mrb, proc, recv, env);
 }
 
 /* Call Debugger#on_break. A funcall on the same context would realloc the
@@ -122,7 +101,7 @@ debug_code_fetch_hook(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc, 
   int should_break = mrb_debugger_should_break_p(mrb, self, file, line);
   if (!should_break && !watching) return;
   /* Bind before debug_invoke_on_break switches away from the paused frame. */
-  mrb_value binding = debug_make_binding(mrb, mrb->c, mrb->c->ci);
+  mrb_value binding = mrb_debug_frame_binding(mrb, mrb->c, mrb->c->ci);
   debug_invoke_on_break(mrb, self, file, line, binding, should_break);
 }
 
