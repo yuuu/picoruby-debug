@@ -20,6 +20,22 @@ class DapTransport
     @available = !!defined?(TCPServer)
   end
 
+  # Unlike .available? (gem presence, static for the life of the process),
+  # link state can change from one binding.debugger call to the next, so
+  # this is never memoized. Opening a TCPServer while the link is down
+  # doesn't raise a catchable exception -- it hits an ESP-IDF/lwIP assert
+  # deep in tcpip_send_msg_wait_sem and aborts the whole device. Platforms
+  # with no Network::WiFi wrapper at all (POSIX host, where this gem's own
+  # tests run TCPServer directly) have nothing to check, so they pass.
+  def self.wifi_connected?
+    begin
+      require 'network'
+    rescue LoadError
+    end
+    return true unless defined?(Network::WiFi)
+    Network::WiFi.link_connected?
+  end
+
   def initialize(port)
     require 'json' # To save memory: only loaded once DapTransport is actually used
     @port = port
@@ -37,6 +53,7 @@ class DapTransport
   # a separate task/Fiber watching the debugged script.
   def listen
     return false unless self.class.available?
+    return false unless self.class.wifi_connected?
     @server = TCPServer.new(nil, @port)
     @socket = @server.accept
     true
