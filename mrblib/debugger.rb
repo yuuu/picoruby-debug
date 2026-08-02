@@ -4,16 +4,19 @@ class Debugger
   LIST_RADIUS = 5
   DEFAULT_DAP_PORT = 4711
 
-  # Enables a DAP session for the next Debugger instance (the first
-  # binding.debugger call creates it -- see mrb_binding_debugger in
-  # src/mruby/debug.c). Not calling this at all defaults to DEFAULT_DAP_PORT
-  # (see .dap_port); pass a falsy port to opt back out of DAP entirely.
+  # Pass a falsy port to opt back out of DAP entirely; defaults to DEFAULT_DAP_PORT.
   def self.listen_dap(port = DEFAULT_DAP_PORT)
     @dap_port = port
+    @default.reconfigure_dap if defined?(@default) && @default
   end
 
   def self.dap_port
     defined?(@dap_port) ? @dap_port : DEFAULT_DAP_PORT
+  end
+
+  # Shared instance reused by mrb_binding_debugger (src/mruby/debug.c).
+  def self.default
+    @default ||= new
   end
 
   def initialize
@@ -33,8 +36,13 @@ class Debugger
         self.prompt = "(prdb)"
       end
     end.new
+    reconfigure_dap
+  end
+
+  # Re-derives @dap_session from Debugger.dap_port; also called by .listen_dap.
+  def reconfigure_dap
     port = self.class.dap_port
-    @dap_session = DapSession.new(DapTransport.new(port)) if port && DapTransport.available?
+    @dap_session = (port && DapTransport.available?) ? DapSession.new(DapTransport.new(port)) : nil
   end
 
   def show_source(file, current_line, center)
@@ -360,3 +368,6 @@ class Debugger
     ENV['TERM'] = prev_term
   end
 end
+
+# Build the shared instance now (see .default) so scripts get it for free.
+Debugger.default
