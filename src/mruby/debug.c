@@ -182,7 +182,9 @@ mrb_binding_debugger(mrb_state *mrb, mrb_value self)
   mrb_value dbg = mrb_iv_get(mrb, self, dbg_ivar);
   if (mrb_nil_p(dbg)) {
     struct RClass *cls = mrb_class_get_id(mrb, MRB_SYM(Debugger));
-    dbg = mrb_obj_new(mrb, cls, 0, NULL);
+    /* Reuse Debugger.default (mrblib/debugger.rb) if already built. */
+    mrb_value default_dbg = mrb_iv_get(mrb, mrb_obj_value(cls), mrb_intern_lit(mrb, "@default"));
+    dbg = mrb_nil_p(default_dbg) ? mrb_obj_new(mrb, cls, 0, NULL) : default_dbg;
     mrb_iv_set(mrb, self, dbg_ivar, dbg);
   }
 
