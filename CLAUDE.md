@@ -217,6 +217,7 @@ build/host/bin/picoruby /path/to/script.rb
   (the shared 1-based/stable listing loop used by both `list_breakpoints`
   and `list_watches`). C methods it calls (`add_breakpoint`, `set_step_mode`,
   `request_quit`, etc.) are defined in `src/mruby/debugger.c`.
+  - **Frame control** (`frame`/`f`, `up`/`u`, `down`): `on_break` builds a fresh `Frame` (`mrblib/frame.rb`) each stop; `p`/`print`/`list` read its `binding`/`position` instead of always using the innermost `bnd`/`file`/`line`, while `display`/`watch` stay innermost-only like CRuby's `debug` gem.
 - **`mrblib/breakpoint.rb`/`line_breakpoint.rb`/`watch_breakpoint.rb`**: the
   Ruby-side half of the three CDATA classes above — mostly `to_s`/
   `numbered_line` formatting, plus `WatchBreakpoint#break?`/
@@ -227,6 +228,7 @@ build/host/bin/picoruby /path/to/script.rb
   breakpoints/watches, `display`/`undisplay` need no VM mechanic — they just
   re-evaluate and print at whatever timing `on_break` already runs at.
   `Debugger#@displays` is an `Array<Display>`.
+- **`mrblib/frame.rb`**: `Frame` — the selected stack frame for one `on_break` stop (`frame`/`up`/`down`'s state), wrapping `frame_count`/`frame_position(depth)`/`frame_binding(depth)` (the same C API `mrblib/dap_session.rb` calls directly) and papering over `binding.debugger`'s own wrapper C frame via an `offset` passed in at construction. Pure Ruby, no C counterpart. `Debugger#@frame` is replaced wholesale each stop, not reset in place.
 - Breakpoint file matching is **suffix-based** (`debug_file_match`) and
   numbering is **stable**: `remove_breakpoint`/`delete_breakpoint` deactivate
   in place rather than compacting the array, so existing breakpoint numbers
