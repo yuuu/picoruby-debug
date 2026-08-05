@@ -53,11 +53,14 @@ Commands at the prompt:
 | `s` / `step` | Stop at the next line, stepping into calls |
 | `n` / `next` | Stop at the next line in the same/shallower frame |
 | `q` / `quit` | Stop the script |
-| `bt` / `where` | Show the full call stack, innermost frame first (`#0`, `#1`, ...); a frame with no Ruby-level position (e.g. a C frame) is omitted |
+| `bt` / `where` | Show the full call stack, innermost frame first (`#0`, `#1`, ...); a frame with no Ruby-level position (e.g. a C frame) is omitted; the currently selected frame (see `frame`/`up`/`down` below) is marked with `=>` |
+| `f` / `frame [<number>]` | Show the currently selected frame, or select frame `<number>` (as listed by `bt`) and show it |
+| `u` / `up [<count>]` | Select the frame `<count>` (default 1) levels toward the caller (outward) |
+| `down [<count>]` | Select the frame `<count>` (default 1) levels toward the callee (inward) |
 | `b` / `break [<file>:]<line>` | Add a breakpoint, or list the current breakpoints (with their numbers) if no argument is given |
 | `d` / `delete [<number>]` | Delete breakpoint `<number>` (as shown by `b` with no argument), or all breakpoints if no number is given |
-| `l` / `list [<line>]` | Show the source around the current line, or around `<line>` if given (10 lines of context, current line marked with `=>`) |
-| `p` / `print <expression>` | Evaluate `<expression>` against the paused frame's locals and print the result (via `Binding#eval`); unavailable if no binding could be built for the current frame |
+| `l` / `list [<line>]` | Show the source around the current line of the selected frame (see `frame`/`up`/`down`), or around `<line>` if given (10 lines of context, current line marked with `=>`) |
+| `p` / `print <expression>` | Evaluate `<expression>` against the selected frame's locals (see `frame`/`up`/`down`) and print the result (via `Binding#eval`); unavailable if no binding could be built for that frame |
 | `disp` / `display <expression>` | Register an expression to be automatically evaluated and shown every time execution stops, or list the currently registered display expressions (with their numbers) if no argument is given |
 | `undisp` / `undisplay [<number>]` | Remove display expression `<number>` (as shown by `display` with no argument), or all of them if no number is given |
 | `w` / `watch <expression>` | Stop execution automatically whenever `<expression>`'s value changes, or list the currently registered watchpoints (with their numbers) if no argument is given |

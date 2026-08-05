@@ -208,19 +208,6 @@ class Debugger
     lines.each { |line| add_breakpoint(file, line) }
   end
 
-  def print_backtrace
-    count = frame_count
-    if count == 0
-      puts "No frame information available"
-      return
-    end
-    count.times do |depth|
-      pos = frame_position(depth)
-      next unless pos # e.g. the C frame a binding.debugger call itself runs in
-      puts "  ##{depth} #{pos[0]}:#{pos[1]}"
-    end
-  end
-
   def list_entries(collection, empty_message)
     shown = false
     collection.each_with_index do |bp, i|
@@ -263,11 +250,18 @@ class Debugger
       request_quit
       return true
     when "bt", "where"
-      print_backtrace
+      @frame.print_backtrace
+    when "f", "frame"
+      arg ? @frame.select(arg) : @frame.show
+    when "u", "up"
+      @frame.move(arg ? arg.to_i : 1)
+    when "down"
+      @frame.move(-(arg ? arg.to_i : 1))
     when "l", "list"
-      center = arg ? arg.to_i : line
-      center = line if center <= 0
-      show_source(file, line, center)
+      pos = @frame.position || [file, line]
+      center = arg ? arg.to_i : pos[1]
+      center = pos[1] if center <= 0
+      show_source(pos[0], pos[1], center)
     when "b", "break"
       if arg
         set_breakpoint(file, arg)
@@ -278,7 +272,7 @@ class Debugger
       delete_breakpoint(arg)
     when "p", "print"
       if arg
-        print_expr(bnd, arg)
+        print_expr(@frame.binding, arg)
       else
         puts "Usage: p <expression>"
       end
@@ -308,6 +302,8 @@ class Debugger
   # (nil if none could be built). real_stop is false for a watch-forced
   # per-line visit: return silently then unless a watch changed.
   def on_break(file, line, bnd, real_stop)
+    offset = frame_position(0) ? 0 : 1 # 1 if depth 0 has no Ruby-level position of its own (binding.debugger), else 0
+    @frame = Frame.new(self, file, line, bnd, offset)
     changes = check_watches(bnd)
     return if !real_stop && changes.empty?
 
