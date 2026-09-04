@@ -11,10 +11,11 @@ module MRDebug
 
   def self.session=(session)
     @session = session
+    MRDebug::Hook.install(session)
   end
 
   def self.break(bnd)
     file, line = bnd.source_location
-    session.on_line(file, line, bnd)
+    MRDebug::Hook.enter(file, line, bnd)
   end
 end

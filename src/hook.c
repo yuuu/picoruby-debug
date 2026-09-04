@@ -40,7 +40,7 @@ static struct mrdebug_hook {
 } hook;
 
 struct on_line_args {
-  mrb_value session, file, line;
+  mrb_value session, file, line, bnd;
 };
 
 static void hook_code_fetch(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc, mrb_value *regs);
@@ -109,11 +109,11 @@ static mrb_value
 call_on_line(mrb_state *mrb, void *userdata)
 {
   struct on_line_args *a = (struct on_line_args *)userdata;
-  return mrb_funcall_id(mrb, a->session, MRB_SYM(on_line), 2, a->file, a->line);
+  return mrb_funcall_id(mrb, a->session, MRB_SYM(on_line), 3, a->file, a->line, a->bnd);
 }
 
-static void
-invoke_on_line(mrb_state *mrb, mrb_value file, int32_t line)
+static mrb_value
+invoke_on_line(mrb_state *mrb, mrb_value file, int32_t line, mrb_value bnd)
 {
   struct mrb_context *task_c = mrb->c;
 
@@ -125,8 +125,8 @@ invoke_on_line(mrb_state *mrb, mrb_value file, int32_t line)
   hook.paused = task_c;
   mrb->c = hook.ctx;
 
-  struct on_line_args args = { hook.session, file, mrb_fixnum_value(line) };
-  mrb_protect_error(mrb, call_on_line, &args, NULL);
+  struct on_line_args args = { hook.session, file, mrb_fixnum_value(line), bnd };
+  mrb_value result = mrb_protect_error(mrb, call_on_line, &args, NULL);
 
   mrb->c = task_c;
   hook.paused = NULL;
@@ -134,6 +134,7 @@ invoke_on_line(mrb_state *mrb, mrb_value file, int32_t line)
 
   hook.in_callback = FALSE;
   if (hook.armed) mrb->code_fetch_hook = hook_code_fetch;
+  return result;
 }
 
 static void
@@ -153,13 +154,22 @@ hook_code_fetch(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc, mrb_va
   const char *file = mrb_debug_get_filename(mrb, irep, off);
   if (!file) return;
 
-  invoke_on_line(mrb, filename_value(mrb, irep, file), line);
+  invoke_on_line(mrb, filename_value(mrb, irep, file), line, mrb_nil_value());
 }
 
 struct mrb_context *
-mrdebug_paused_ctx(void)
+mrdebug_paused_ctx(mrb_state *mrb)
 {
-  return hook.paused;
+  return hook.paused ? hook.paused : mrb->c;
+}
+
+static mrb_value
+hook_s_enter(mrb_state *mrb, mrb_value self)
+{
+  mrb_value file, bnd;
+  mrb_int line;
+  mrb_get_args(mrb, "Sio", &file, &line, &bnd);
+  return invoke_on_line(mrb, file, (int32_t)line, bnd);
 }
 
 static mrb_value
@@ -216,6 +226,7 @@ mrb_mrdebug_gem_init(mrb_state *mrb)
   mrb_define_module_function_id(mrb, hook_mod, MRB_SYM(install), hook_s_install, MRB_ARGS_REQ(1));
   mrb_define_module_function_id(mrb, hook_mod, MRB_SYM(uninstall), hook_s_uninstall, MRB_ARGS_NONE());
   mrb_define_module_function_id(mrb, hook_mod, MRB_SYM_E(armed), hook_s_armed_set, MRB_ARGS_REQ(1));
+  mrb_define_module_function_id(mrb, hook_mod, MRB_SYM(enter), hook_s_enter, MRB_ARGS_REQ(3));
   mrdebug_frame_init(mrb, hook_mod);
 }
 

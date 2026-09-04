@@ -56,7 +56,7 @@ frame_binding(mrb_state *mrb, struct mrb_context *c, mrb_callinfo *ci)
 static mrb_value
 hook_s_frame_count(mrb_state *mrb, mrb_value self)
 {
-  struct mrb_context *c = mrdebug_paused_ctx();
+  struct mrb_context *c = mrdebug_paused_ctx(mrb);
   return mrb_fixnum_value(c ? frame_count(c) : 0);
 }
 
@@ -66,7 +66,7 @@ hook_s_frame_position(mrb_state *mrb, mrb_value self)
   mrb_int depth;
   mrb_get_args(mrb, "i", &depth);
 
-  struct mrb_context *c = mrdebug_paused_ctx();
+  struct mrb_context *c = mrdebug_paused_ctx(mrb);
   mrb_callinfo *ci = c ? frame_at(c, (int)depth) : NULL;
   if (!ci) return mrb_nil_value();
 
@@ -86,7 +86,7 @@ hook_s_frame_binding(mrb_state *mrb, mrb_value self)
   mrb_int depth;
   mrb_get_args(mrb, "i", &depth);
 
-  struct mrb_context *c = mrdebug_paused_ctx();
+  struct mrb_context *c = mrdebug_paused_ctx(mrb);
   mrb_callinfo *ci = c ? frame_at(c, (int)depth) : NULL;
   if (!ci) return mrb_nil_value();
 
