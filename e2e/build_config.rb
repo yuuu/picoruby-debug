@@ -22,4 +22,8 @@ MRuby::Build.new('host') do |conf|
   conf.gem gemdir: MRDEBUG_ROOT
 
   conf.enable_test
+
+  # Without -g, AOT-compiled test/*.rb has no line info, so the VM hook can
+  # never be observed firing from a mrbtest assertion.
+  conf.enable_debug
 end
