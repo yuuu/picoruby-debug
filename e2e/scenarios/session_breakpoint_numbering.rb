@@ -1,4 +1,4 @@
-# Suffix matching (plain end_with?, matching the old C implementation's
+# Suffix matching (plain String#[] slicing, matching the old C implementation's
 # debug_file_match -- no path-separator boundary check) and stable
 # numbering: delete deactivates in place rather than compacting the array,
 # so surviving breakpoints keep their numbers.
@@ -20,7 +20,8 @@ raise 'removing #2 again should fail' if session.remove_breakpoint(2)
 n4 = session.add_breakpoint(__FILE__, 400)
 raise "expected #4 to be a fresh number, got #{n4}" unless n4 == 4
 
-active = session.breakpoints.each_with_index.select { |bp, _| bp.active? }.map { |_, i| i + 1 }
+active = []
+session.breakpoints.each_with_index { |bp, i| active << i + 1 if bp.active? }
 raise "expected [1, 3, 4] active, got #{active.inspect}" unless active == [1, 3, 4]
 
 puts 'ok'

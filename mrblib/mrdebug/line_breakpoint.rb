@@ -16,10 +16,8 @@ module MRDebug
       @active = false
     end
 
-    # `file` here is the full path the VM reports; @file may be a shorter
-    # suffix the user typed (e.g. `break foo.rb:8` matches `/path/to/foo.rb`).
     def match?(file, line)
-      active? && @line == line && file.end_with?(@file)
+      active? && @line == line && file[-@file.size, @file.size] == @file
     end
 
     def to_s

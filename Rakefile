@@ -34,6 +34,14 @@ task :build do
   mruby_rake
 end
 
+desc 'Run mrdebug\'s unit tests (test/*.rb, mruby assert)'
+namespace :test do
+  task :unit do
+    mruby_rake 'test:build'
+    sh File.join(BUILD_DIR, 'host', 'bin', 'mrbtest')
+  end
+end
+
 desc 'Remove mrdebug build artifacts'
 task :clean do
   rm_rf BUILD_DIR
