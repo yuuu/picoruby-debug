@@ -1,6 +1,7 @@
 /*
-** hook.c - the only C in mrdebug. Installs code_fetch_hook and calls back
-** into Ruby once per source line; everything else lives on the Ruby side.
+** hook.c - installs code_fetch_hook and calls back into Ruby once per
+** source line; everything else lives on the Ruby side. Frame walking
+** (src/frame.c) is the only other C in mrdebug.
 */
 
 #include <stdint.h>
@@ -12,6 +13,7 @@
 #include <mruby/irep.h>
 #include <mruby/presym.h>
 #include <mruby/string.h>
+#include "mrdebug.h"
 
 #define DBG_STACK_SIZE 128
 #define DBG_CI_SIZE 32
@@ -28,6 +30,7 @@ static struct mrdebug_hook {
   int32_t prev_line;
 
   struct mrb_context *ctx;
+  struct mrb_context *paused;
 
   struct {
     const mrb_irep *irep;
@@ -119,12 +122,14 @@ invoke_on_line(mrb_state *mrb, mrb_value file, int32_t line)
 
   if (!hook.ctx) hook.ctx = dbg_context_new(mrb);
   hook.ctx->prev = task_c;
+  hook.paused = task_c;
   mrb->c = hook.ctx;
 
   struct on_line_args args = { hook.session, file, mrb_fixnum_value(line) };
   mrb_protect_error(mrb, call_on_line, &args, NULL);
 
   mrb->c = task_c;
+  hook.paused = NULL;
   dbg_context_reset(mrb, hook.ctx);
 
   hook.in_callback = FALSE;
@@ -149,6 +154,12 @@ hook_code_fetch(mrb_state *mrb, const mrb_irep *irep, const mrb_code *pc, mrb_va
   if (!file) return;
 
   invoke_on_line(mrb, filename_value(mrb, irep, file), line);
+}
+
+struct mrb_context *
+mrdebug_paused_ctx(void)
+{
+  return hook.paused;
 }
 
 static mrb_value
@@ -205,6 +216,7 @@ mrb_mrdebug_gem_init(mrb_state *mrb)
   mrb_define_module_function_id(mrb, hook_mod, MRB_SYM(install), hook_s_install, MRB_ARGS_REQ(1));
   mrb_define_module_function_id(mrb, hook_mod, MRB_SYM(uninstall), hook_s_uninstall, MRB_ARGS_NONE());
   mrb_define_module_function_id(mrb, hook_mod, MRB_SYM_E(armed), hook_s_armed_set, MRB_ARGS_REQ(1));
+  mrdebug_frame_init(mrb, hook_mod);
 }
 
 void
