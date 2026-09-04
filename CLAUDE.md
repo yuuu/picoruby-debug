@@ -212,36 +212,22 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   it" boundary `docs/plan-phase1.md` calls for).
 - **`mrblib/mrdebug/ui.rb`** — `MRDebug::UI::Base`, the one-method contract
   (`#on_stop(session)`) a UI implements.
-- **`mrblib/mrdebug/transport.rb`** (Phase3) — `MRDebug::Transport::Base`, the
-  `(prdb)` prompt's I/O contract: `#gets` (one message in, `nil` on
-  EOF/disconnect) and `#write(str)` (a raw string out, no implied newline).
-  A UI depends on a `Transport` rather than talking to stdio directly, the
-  same "return data instead of touching I/O" split `Command` already
-  applies one layer down. This is a Transport in the narrow sense of "how
-  the `(prdb)` prompt exchanges lines" — not a wire protocol (DAP, rdbg's
-  console protocol); a wire protocol is a framing layer meant to sit on top
-  of a Transport (see `docs/plan-phase3.md`).
+- **`mrblib/mrdebug/transport.rb`** (Phase3) — `MRDebug::Transport::Base`:
+  the `(prdb)` prompt's I/O contract (`#gets`/`#write`), not a wire protocol
+  (DAP, rdbg, ...) — see `docs/plan-phase3.md`.
 - **`mrblib/mrdebug/transport/loopback.rb`** (Phase3) —
-  `MRDebug::Transport::Loopback`: an in-process transport backed by two
-  plain arrays (queued input, recorded output). No I/O, so it needs no
-  `build.host?` guard — this is what makes `LocalConsole` testable under
-  `rake test:unit` without stdio (`test/transport.rb`,
-  `test/e2e/local_console.rb`).
+  `MRDebug::Transport::Loopback`: an in-process, array-backed transport with
+  no I/O, used to test `LocalConsole` under `rake test:unit` without stdio.
 - **`tools/mrdebug/transport/stdio.rb`** (host builds only, Phase3) —
-  `MRDebug::Transport::Stdio`: `STDIN`/`STDOUT` via `mruby-io`, the default
-  `LocalConsole` still uses. Strips a trailing `"\n"`/`"\r\n"` by hand
-  (`strip_eol`) rather than `String#chomp` — `#chomp` lives in
-  `mruby-string-ext`, which misbehaves under `mrbtest` (see "Avoid
-  mruby-string-ext methods" below); this file is host-only but still gets
-  loaded, and exercised via a `Loopback`-backed test, under `mrbtest`.
+  `MRDebug::Transport::Stdio`: `STDIN`/`STDOUT` via `mruby-io`. Strips a
+  trailing newline by hand (`strip_eol`), not `String#chomp` — that's
+  `mruby-string-ext`, which misbehaves under `mrbtest`.
 - **`tools/mrdebug/ui/local_console.rb`** (host builds only) —
-  `MRDebug::UI::LocalConsole`: the `(prdb)` prompt, driven by a `Transport`
-  (defaults to `Transport::Stdio`, one line per command). Reading exactly
-  one message at a time is what avoids the old `picoruby-editor`-based
-  design's known bug (piped/pasted multi-command input losing everything
-  after a resuming command) — there's no shared read-ahead buffer to lose
-  data from; a `Transport` implementation owns that guarantee now, not
-  `LocalConsole` itself.
+  `MRDebug::UI::LocalConsole`: the `(prdb)` prompt, one `STDIN.gets` (now via
+  a `Transport`, defaulting to `Stdio`) per command. Reading exactly one
+  line at a time is what avoids the old `picoruby-editor`-based design's
+  known bug (piped/pasted multi-command input losing everything after a
+  resuming command) — there's no shared read-ahead buffer to lose data from.
 
 ## Known gaps (in progress)
 
