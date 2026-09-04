@@ -1,6 +1,16 @@
 module MRDebug
   class Session
+    # Binding#debugger/#b/#break -> MRDebug.break -> MRDebug::Hook.enter is a
+    # fixed 3-frame call chain that Hook.enter's invoke_on_line (src/hook.c)
+    # captures mrb->c through *before* swapping into the debugger context --
+    # so a direct stop's Hook.frame_count always includes exactly these 3
+    # extra frames on top of the debuggee's own depth at the call site.
+    # Confirmed empirically across nesting depths, all 3 Binding aliases,
+    # and repeated direct stops in the same session.
+    DIRECT_STOP_FRAME_OFFSET = 3
+
     attr_reader :file, :line, :binding
+    attr_accessor :ui
 
     def initialize
       @breakpoints = []
@@ -43,16 +53,9 @@ module MRDebug
     end
 
     def next_mode!
-      # A direct Binding#debugger stop's Hook.frame_count includes
-      # MRDebug.break's own wrapper frames on top of the debuggee's, which
-      # doesn't shrink back to the debuggee-only count a later hook-
-      # triggered comparison would see -- not a small, fixed offset, just
-      # not comparable. Fall back to stepping through every line instead of
-      # a depth check that would rarely fire at all.
-      return step_mode! if @direct_stop
-
       @mode = :next
       @next_depth = MRDebug::Hook.frame_count
+      @next_depth -= DIRECT_STOP_FRAME_OFFSET if @direct_stop
       update_armed
     end
 
@@ -65,6 +68,7 @@ module MRDebug
       @line = line
       @binding = bnd || MRDebug::Hook.frame_binding(0)
       @direct_stop = !bnd.nil?
+      ui.on_stop(self) if ui
       true
     end
 
