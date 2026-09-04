@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `mrdebug` is an interactive debugger for **mruby**, rebuilt from scratch
 (the old `picoruby-debug` gem) to run with nothing but a plain mruby
 checkout — see `docs/plan-phase1.md` for the design rationale and the
-step-by-step history of how this codebase got to its current shape.
+step-by-step history of how this codebase got to its current shape, and
+`docs/plan-phase2.md` for what comes after phase 1 (scope and ordering
+for phase 2 onward).
 Read `README.md` before making changes; it documents the command set and
 the known rough edges (particularly the "stepping shows mrdebug's own
 source" limitation) that are easy to regress.
