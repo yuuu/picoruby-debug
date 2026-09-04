@@ -1,16 +1,15 @@
-MRuby::Gem::Specification.new('picoruby-debug') do |spec|
+MRuby::Gem::Specification.new('mrdebug') do |spec|
   spec.license = 'MIT'
   spec.author  = 'Yuhei Okazaki'
-  spec.summary = 'Debugger for PicoRuby (mruby only)'
+  spec.summary = 'Debugger core for mruby'
 
-  spec.add_dependency 'picoruby-sandbox'
-  spec.add_dependency 'picoruby-editor'
-  spec.add_dependency 'picoruby-io-console'
-  spec.add_dependency 'picoruby-json'
-  if build.vm_mruby?
-    spec.add_dependency 'mruby-binding', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-binding"
-    spec.add_dependency 'mruby-eval', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-eval"
+  spec.build.defines << 'MRB_USE_DEBUG_HOOK'
+
+  spec.add_dependency 'mruby-binding', core: 'mruby-binding'
+  spec.add_dependency 'mruby-eval', core: 'mruby-eval'
+
+  if spec.build.host?
+    spec.add_dependency 'mruby-io', core: 'mruby-io'
+    spec.rbfiles += Dir.glob("#{spec.dir}/tools/mrdebug/**/*.rb").sort
   end
-
-  build.defines << 'MRB_USE_DEBUG_HOOK' if build.vm_mruby?
 end
