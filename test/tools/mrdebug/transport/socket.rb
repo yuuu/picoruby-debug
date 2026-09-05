@@ -38,6 +38,24 @@ ensure
   server.close
 end
 
+assert('Transport::Socket#write does not choke on bytes #gets already buffered ahead (regression: Errno::ESPIPE)') do
+  server = TCPServer.new('127.0.0.1', 0)
+  port = server.addr[1]
+
+  client = TCPSocket.new('127.0.0.1', port)
+  device = MRDebug::Transport::TCP.new(server.accept)
+
+  client.write("break foo.rb:1\ncontinue\n")
+
+  assert_equal 'break foo.rb:1', device.gets
+  device.write("Breakpoint 1 added\n")
+  assert_equal 'continue', device.gets
+ensure
+  client.close if client
+  device.close if device
+  server.close
+end
+
 assert('Transport::Socket#gets returns nil once the peer closes') do
   server = TCPServer.new('127.0.0.1', 0)
   port = server.addr[1]

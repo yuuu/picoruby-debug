@@ -57,24 +57,37 @@ module MRDebug
       remote.close if remote
     end
 
-    # Raw byte pump, not #gets-based: the device's "(prdb) " prompt has no
-    # trailing newline, so a line-oriented read here would block forever
-    # waiting for one. IO.select lets STDIN and the socket interrupt each
-    # other instead.
+    # Raw byte pump (the device's prompt has no trailing newline, so
+    # #gets would block forever). Stops watching local_in on EOF rather
+    # than ending the relay -- only the device closing its end does that.
     def self.relay(remote_io, transport, local_in = STDIN, local_out = STDOUT)
+      local_open = true
       loop do
-        ready, = IO.select([remote_io, local_in])
+        watch = local_open ? [remote_io, local_in] : [remote_io]
+        ready, = IO.select(watch)
         next unless ready
         if ready.include?(remote_io)
-          local_out.write(remote_io.sysread(4096))
-          local_out.flush
+          drain(remote_io, local_out)
         end
-        if ready.include?(local_in)
-          remote_io.write(local_in.sysread(4096))
+        if local_open && ready.include?(local_in)
+          begin
+            remote_io.write(local_in.sysread(4096))
+          rescue EOFError
+            local_open = false
+          end
         end
       end
     rescue EOFError
       transport.write("\n(connection closed)\n")
+    end
+
+    # A ready select() doesn't mean one sysread(4096) drains it all.
+    def self.drain(io, out)
+      loop do
+        out.write(io.sysread(4096))
+        out.flush
+        break unless IO.select([io], nil, nil, 0)
+      end
     end
 
     def self.run_demo_session(options, transport)

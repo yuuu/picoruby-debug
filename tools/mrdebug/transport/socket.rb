@@ -1,16 +1,29 @@
 module MRDebug
   module Transport
-    # Host builds only -- mruby-socket.
+    # Host builds only -- mruby-socket. #gets uses #sysread, not the
+    # buffered IO#gets, to avoid an ESPIPE from #write's internal lseek.
     class Socket < Base
       attr_reader :io
 
       def initialize(io)
         @io = io
+        @buf = ''
       end
 
       def gets
-        line = @io.gets
-        return nil if line.nil?
+        loop do
+          nl = @buf.index("\n")
+          if nl
+            line = @buf[0, nl]
+            @buf = @buf[(nl + 1)..-1]
+            return strip_eol(line)
+          end
+          @buf += @io.sysread(4096)
+        end
+      rescue EOFError
+        return nil if @buf.empty?
+        line = @buf
+        @buf = ''
         strip_eol(line)
       end
 
