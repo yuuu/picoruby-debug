@@ -208,6 +208,93 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('Command.dispatch list with no current position reports it') do
+  session = MRDebug::Session.new
+  out, action = MRDebug::Command.dispatch(session, 'list')
+  assert_equal :stay, action
+  assert_equal ['No current position (not stopped anywhere yet)'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch list rejects an invalid line number') do
+  session = MRDebug::Session.new
+  session.on_line(__FILE__, 1, binding)
+  out, action = MRDebug::Command.dispatch(session, 'list 0')
+  assert_equal :stay, action
+  assert_equal ['Invalid line number'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch list reports a line past the end of the file') do
+  session = MRDebug::Session.new
+  session.on_line(__FILE__, 1, binding)
+  out, _ = MRDebug::Command.dispatch(session, 'list 999999')
+  assert_equal 1, out.size
+  assert_true out[0].include?('out of range')
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch list <file>:<line> reports a read failure for a nonexistent file') do
+  session = MRDebug::Session.new
+  session.on_line(__FILE__, 1, binding)
+  out, _ = MRDebug::Command.dispatch(session, 'list nonexistent-file-xyz.rb:5')
+  assert_equal ['Cannot open nonexistent-file-xyz.rb'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch list with no argument reads the current file (this test file) from disk') do
+  session = MRDebug::Session.new
+  session.on_line(__FILE__, 1, binding) # line 1 of this very file, below
+  out, action = MRDebug::Command.dispatch(session, 'list')
+  assert_equal :stay, action
+  # Line 1 is this file's very first line -- context clamps at the top
+  # instead of going negative.
+  assert_equal '=> 1  # Every test here creates a Session, which registers itself with', out.first
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch list <line> targets a different line of the current file') do
+  session = MRDebug::Session.new
+  session.on_line(__FILE__, 50, binding) # "current" file only, target overridden below
+  out, _ = MRDebug::Command.dispatch(session, 'list 1')
+  assert_equal '=> 1  # Every test here creates a Session, which registers itself with', out.first
+ensure
+  MRDebug::Hook.uninstall
+end
+
+# Known, unique content for the mid-file listing test below -- placed with
+# comfortable room on both sides so LIST_CONTEXT (5) never clips the file's
+# own start/end.
+list_probe_line1 = __LINE__ + 1
+list_probe_a = 1 # list-probe-a
+list_probe_line2 = __LINE__ + 1
+list_probe_b = 2 # list-probe-b
+list_probe_line3 = __LINE__ + 1
+list_probe_c = 3 # list-probe-c
+
+assert('Command.dispatch list shows 5 lines of context on each side, current line marked with =>') do
+  session = MRDebug::Session.new
+  session.on_line(__FILE__, list_probe_line2, binding)
+
+  out, action = MRDebug::Command.dispatch(session, 'list')
+  assert_equal :stay, action
+  assert_equal 11, out.size
+
+  marked = out.select { |l| l[0, 2] == '=>' }
+  assert_equal 1, marked.size
+  assert_equal "=> #{list_probe_line2}  list_probe_b = 2 # list-probe-b", marked[0]
+
+  assert_true out.include?("   #{list_probe_line1}  list_probe_a = 1 # list-probe-a")
+  assert_true out.include?("   #{list_probe_line3}  list_probe_c = 3 # list-probe-c")
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('Command.dispatch reports an unknown command') do
   session = MRDebug::Session.new
   out, action = MRDebug::Command.dispatch(session, 'xyz')

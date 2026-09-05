@@ -63,6 +63,7 @@ file the VM reports, so `break foo.rb:8` matches `/path/to/foo.rb`.
 | `next` | `n` | Stop at the next line in the same frame or shallower (does not descend into a call) |
 | `break [<file>:]<line>` | `b` | Add a breakpoint (file defaults to the currently stopped file), or list breakpoints with no argument |
 | `delete [<number>]` | `d` | Delete breakpoint `<number>` (as listed by `break`), or all breakpoints with no argument |
+| `list [[<file>:]<line>]` | `l` | Show 5 lines of source on either side of the current line (or `<line>`, in `<file>` if given), current line marked with `=>` |
 | `print <expression>` | `p` | Evaluate `<expression>` against the stopped frame's binding |
 
 There's no `quit` yet — let the script run to completion with `continue`.
@@ -174,7 +175,7 @@ script.rb` run doesn't need this, since it compiles at runtime.
 
 Not in phase 1, roughly in the order a future phase might tackle them:
 
-- `quit`, `list`, `bt`/`frame`/`up`/`down`, `watch`, `display`, `finish`,
+- `quit`, `bt`/`frame`/`up`/`down`, `watch`, `display`, `finish`,
   conditional/method breakpoints, `catch`, `step N`/`next N`
 - PicoRuby / R2P2 support
 - A serial transport (TCP/Unix socket transport and the host CLI binary

@@ -222,6 +222,26 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   without stdio and reusable across front ends (today just
   `LocalConsole`, but the split is exactly the "coreoutputs data, UI prints
   it" boundary `docs/plan-phase1.md` calls for).
+  - **`list`/`l`** is the one command whose *body* needs I/O (reading the
+    stopped file's source text) despite living in this I/O-free core file.
+    Rather than splitting a "source reader" out to `tools/mrdebug/` and
+    injecting it into `Session`/`Command` (the `Transport` pattern), it
+    stays in `Command.source_listing` and just checks `defined?(File)`
+    first: on a host build `File` is always present (`mrbgem.rake` adds
+    `mruby-io` under `spec.build.host?`, and `spec.rbfiles +=` never
+    removes core), so this is the common case; a firmware build that never
+    linked `mruby-io` in gets a one-line "not available" message instead of
+    a `NameError`. This was chosen over dependency injection because
+    `list`'s only device-specific need is *reading bytes off a path
+    already known to Ruby* (`session.file`) — unlike `Transport`, there's
+    no protocol or session-lifetime state to own, so a DI seam would add a
+    layer without a matching axis of variation to justify it. `File.read`
+    (not `File.readlines`, which mruby-io's `File` doesn't define) plus a
+    hand-rolled `"\n"`-split (`String#split` is core; `#each_line`/`#lines`
+    are `mruby-string-ext`, unsafe under `mrbtest` per above) turns the
+    file into a 1-indexed line array; `LIST_CONTEXT` (5) lines on either
+    side of the target are then clamped to `1..line_count` and formatted
+    with a `"  "`/`"=>"` marker prefix for the current line (see README).
 - **`mrblib/mrdebug/ui.rb`** — `MRDebug::UI::Base`, the one-method contract
   (`#on_stop(session)`) a UI implements.
 - **`mrblib/mrdebug/transport.rb`** (Phase3) — `MRDebug::Transport::Base`:

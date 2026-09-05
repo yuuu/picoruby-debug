@@ -6,9 +6,13 @@ module MRDebug
       'n' => :next, 'next' => :next,
       'b' => :break, 'break' => :break,
       'd' => :delete, 'delete' => :delete,
+      'l' => :list, 'list' => :list,
       'p' => :print, 'print' => :print,
       'display' => :display,
     }
+
+    # Lines of context shown before/after the target line by `list`.
+    LIST_CONTEXT = 5
 
     # Parses one command line and dispatches it against `session`.
     # Returns [output_lines, :stay | :resume]; never prints (the UI does).
@@ -28,6 +32,8 @@ module MRDebug
         [break_cmd(session, arg), :stay]
       when :delete
         [delete_cmd(session, arg), :stay]
+      when :list
+        [list_cmd(session, arg), :stay]
       when :print
         [print_cmd(session, arg), :stay]
       when :display
@@ -142,6 +148,56 @@ module MRDebug
       return ['Usage: display <expression>'] if blank?(arg)
       n = session.add_display(arg)
       ["#{n}: #{arg}"]
+    end
+
+    # No argument shows the selected frame's own position (session.file/line);
+    # "<line>" or "<file>:<line>" (parse_location, same as break) targets
+    # somewhere else instead.
+    def self.list_cmd(session, arg)
+      file = session.file
+      return ['No current position (not stopped anywhere yet)'] if file.nil?
+
+      line = session.line
+      unless blank?(arg)
+        file, line = parse_location(file, arg)
+        return ['Invalid line number'] unless line && line > 0
+      end
+      source_listing(file, line)
+    end
+
+    # Reads `file` off disk and formats LIST_CONTEXT lines on either side of
+    # `line`. Core (mrblib/) has no I/O dependency of its own -- `File` only
+    # exists here at all on a host build (mrbgem.rake adds mruby-io under
+    # spec.build.host?), so `defined?(File)` is the fallback for a firmware
+    # build that never linked it in.
+    def self.source_listing(file, line)
+      return ['Source listing is not available (no filesystem access in this build)'] unless defined?(File)
+
+      text = begin
+        File.read(file)
+      rescue Exception
+        nil
+      end
+      return ["Cannot open #{file}"] if text.nil?
+
+      # Not String#lines/#each_line -- mruby-string-ext, misbehaves under
+      # mrbtest (see CLAUDE.md). #split is a core String method.
+      all_lines = text.split("\n")
+      return ["Line #{line} is out of range for #{file} (#{all_lines.size} lines)"] if line > all_lines.size
+
+      first = line - LIST_CONTEXT
+      first = 1 if first < 1
+      last = line + LIST_CONTEXT
+      last = all_lines.size if last > all_lines.size
+
+      out = []
+      i = first
+      while i <= last
+        marker = i == line ? '=>' : '  '
+        out << "#{marker} #{i}  #{all_lines[i - 1]}"
+        i += 1
+      end
+      out
     end
 
     def self.print_cmd(session, arg)
