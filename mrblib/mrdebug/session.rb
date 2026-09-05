@@ -23,8 +23,8 @@ module MRDebug
       @breakpoints
     end
 
-    def add_breakpoint(file, line)
-      @breakpoints << LineBreakpoint.new(file, line)
+    def add_breakpoint(file, line, condition = nil)
+      @breakpoints << LineBreakpoint.new(file, line, condition)
       update_armed
       @breakpoints.size
     end
@@ -78,7 +78,21 @@ module MRDebug
       case @mode
       when :step then true
       when :next then MRDebug::Hook.frame_count <= @next_depth
-      else @breakpoints.any? { |bp| bp.match?(file, line) }
+      else
+        bp = @breakpoints.find { |b| b.match?(file, line) }
+        bp ? condition_met?(bp) : false
+      end
+    end
+
+    # A conditionless breakpoint always stops. A conditional one evaluates
+    # against the stopped frame's binding; a raise during evaluation (a
+    # typo'd expression) fails open rather than silently never stopping.
+    def condition_met?(bp)
+      return true unless bp.condition
+      begin
+        MRDebug::Hook.frame_binding(0).eval(bp.condition) ? true : false
+      rescue Exception
+        true
       end
     end
 

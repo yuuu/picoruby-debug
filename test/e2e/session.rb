@@ -50,6 +50,50 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+# --- Conditional breakpoints: the condition is evaluated against the
+# stopped frame's binding, backed by the real VM hook. ---
+class SessionConditionalRecorder < MRDebug::Session
+  attr_reader :stops
+  def initialize
+    super
+    @stops = []
+  end
+  def on_line(file, line, bnd = nil)
+    stopped = super
+    @stops << line if stopped
+    stopped
+  end
+end
+
+session_conditional_target_line = __LINE__ + 2
+def session_conditional_add(i)
+  i + 1
+end
+
+assert('a conditional breakpoint only stops when its condition evaluates true') do
+  recorder = SessionConditionalRecorder.new
+  with_session(recorder) do
+    recorder.add_breakpoint(__FILE__, session_conditional_target_line, 'i > 1')
+    session_conditional_add(1) # condition false: must not stop
+    session_conditional_add(2) # condition true: must stop
+    session_conditional_add(3) # condition true: must stop
+  end
+  assert_equal [session_conditional_target_line] * 2, recorder.stops
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('a conditional breakpoint whose condition raises fails open (stops anyway)') do
+  recorder = SessionConditionalRecorder.new
+  with_session(recorder) do
+    recorder.add_breakpoint(__FILE__, session_conditional_target_line, 'this_is_not_defined')
+    session_conditional_add(1)
+  end
+  assert_equal [session_conditional_target_line], recorder.stops
+ensure
+  MRDebug::Hook.uninstall
+end
+
 # --- Ported from e2e/scenarios/session_step.rb: `step` must stop at every
 # subsequent line, including inside a call, via the real VM hook. ---
 class SessionStepRecorder < MRDebug::Session

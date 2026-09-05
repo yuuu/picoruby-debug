@@ -1,10 +1,11 @@
 module MRDebug
   class LineBreakpoint
-    attr_reader :file, :line
+    attr_reader :file, :line, :condition
 
-    def initialize(file, line)
+    def initialize(file, line, condition = nil)
       @file = file
       @line = line
+      @condition = condition
       @active = true
     end
 
@@ -21,7 +22,7 @@ module MRDebug
     end
 
     def to_s
-      "#{file}:#{line}"
+      condition ? "#{file}:#{line} if #{condition}" : "#{file}:#{line}"
     end
 
     def numbered_line(index)

@@ -60,11 +60,31 @@ module MRDebug
     def self.break_cmd(session, arg)
       return list_breakpoints(session) if blank?(arg)
 
-      file, ln = parse_location(session.file, arg)
+      location, condition = split_condition(arg)
+      file, ln = parse_location(session.file, location)
       return ['Invalid line number'] unless ln && ln > 0
 
-      n = session.add_breakpoint(file, ln)
-      ["Breakpoint #{n} added at #{file}:#{ln}"]
+      n = session.add_breakpoint(file, ln, condition)
+      suffix = condition ? " if #{condition}" : ''
+      ["Breakpoint #{n} added at #{file}:#{ln}#{suffix}"]
+    end
+
+    # Splits "<location> if <condition>" at the first " if ". Returns
+    # [location, nil] when there's no such clause.
+    def self.split_condition(arg)
+      idx = find_if_clause(arg)
+      return [arg, nil] unless idx
+      [trim(arg[0, idx]), trim(arg[(idx + 4)..-1])]
+    end
+
+    def self.find_if_clause(str)
+      i = 0
+      last = str.size - 4
+      while i <= last
+        return i if str[i, 4] == ' if '
+        i += 1
+      end
+      nil
     end
 
     # `[<file>:]<line>`: split at the last ':', else current_file is used.

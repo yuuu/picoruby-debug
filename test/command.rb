@@ -55,6 +55,24 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('Command.dispatch break with an "if" clause adds a conditional breakpoint') do
+  session = MRDebug::Session.new
+  session.on_line('/path/to/foo.rb', 5, binding)
+
+  out, action = MRDebug::Command.dispatch(session, 'break 10 if x > 5')
+  assert_equal :stay, action
+  assert_equal ['Breakpoint 1 added at /path/to/foo.rb:10 if x > 5'], out
+  assert_equal 'x > 5', session.breakpoints[0].condition
+
+  out, _ = MRDebug::Command.dispatch(session, 'b other.rb:20 if y == 1')
+  assert_equal ['Breakpoint 2 added at other.rb:20 if y == 1'], out
+
+  out, _ = MRDebug::Command.dispatch(session, 'break')
+  assert_equal ['  #1 /path/to/foo.rb:10 if x > 5', '  #2 other.rb:20 if y == 1'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('Command.dispatch break with no breakpoints set reports that') do
   session = MRDebug::Session.new
   out, _ = MRDebug::Command.dispatch(session, 'break')
