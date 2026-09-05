@@ -16,6 +16,7 @@ module MRDebug
       @breakpoints = []
       @mode = :run
       @next_depth = nil
+      @remaining = 1
       @displays = []
       MRDebug::Hook.install(self)
     end
@@ -59,15 +60,17 @@ module MRDebug
       update_armed
     end
 
-    def step_mode!
+    def step_mode!(count = 1)
       @mode = :step
+      @remaining = count
       update_armed
     end
 
-    def next_mode!
+    def next_mode!(count = 1)
       @mode = :next
       @next_depth = MRDebug::Hook.frame_count
       @next_depth -= DIRECT_STOP_FRAME_OFFSET if @direct_stop
+      @remaining = count
       update_armed
     end
 
@@ -76,6 +79,10 @@ module MRDebug
     # own Binding in hand. Returns true if execution should stop here.
     def on_line(file, line, bnd = nil)
       return false unless bnd || should_break?(file, line)
+      if bnd.nil? && (@mode == :step || @mode == :next) && @remaining > 1
+        @remaining -= 1
+        return false
+      end
       @file = file
       @line = line
       @binding = bnd || MRDebug::Hook.frame_binding(0)

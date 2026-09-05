@@ -111,6 +111,36 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('Session#step_mode!(N) skips the first N-1 matching lines before stopping') do
+  # Stub Hook.armed= to a no-op -- step_mode! really arms the hook, so this
+  # block's own subsequent lines would otherwise spend counts too. alias_method,
+  # not remove_method: removing a singleton method that shadowed a C-defined
+  # one deletes it outright instead of un-shadowing it.
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_armed_setter_for_test, :armed=)
+  MRDebug::Hook.define_singleton_method(:armed=) { |_flag| }
+  begin
+    session = MRDebug::Session.new
+    session.step_mode!(3)
+    assert_false session.on_line('a.rb', 1) # 1st match: skip
+    assert_false session.on_line('a.rb', 2) # 2nd match: skip
+    assert_true session.on_line('a.rb', 3)  # 3rd match: stop
+    assert_true session.on_line('a.rb', 4)  # repeat count spent: back to stopping every line
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :armed=, :orig_armed_setter_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_armed_setter_for_test)
+end
+
+assert('Session#on_line with a Binding stops immediately, ignoring a pending repeat count') do
+  session = MRDebug::Session.new
+  session.step_mode!(5)
+  assert_true session.on_line('x.rb', 1, binding)
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('Session#next_mode! stops at the recorded depth or shallower') do
   # Hook.frame_count reads the live VM call stack (src/frame.c), which a
   # plain unit test doesn't control -- stub it so the :next comparison in
@@ -135,4 +165,26 @@ assert('Session#next_mode! stops at the recorded depth or shallower') do
   end
 ensure
   MRDebug::Hook.singleton_class.send(:remove_method, :frame_count)
+end
+
+assert('Session#next_mode!(N) must satisfy the depth condition N times before stopping') do
+  # Same Hook.armed= stub as step_mode!(N)'s test above, for the same reason.
+  depth = [2]
+  MRDebug::Hook.define_singleton_method(:frame_count) { depth[0] }
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_armed_setter_for_test, :armed=)
+  MRDebug::Hook.define_singleton_method(:armed=) { |_flag| }
+  begin
+    session = MRDebug::Session.new
+    session.next_mode!(3) # records next_depth = 2
+
+    assert_false session.on_line('a.rb', 1) # 1st match at recorded depth: skip
+    assert_false session.on_line('a.rb', 2) # 2nd match: skip
+    assert_true session.on_line('a.rb', 3)  # 3rd match: stop
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:remove_method, :frame_count)
+  MRDebug::Hook.singleton_class.send(:alias_method, :armed=, :orig_armed_setter_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_armed_setter_for_test)
 end

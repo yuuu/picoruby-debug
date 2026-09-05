@@ -19,10 +19,10 @@ module MRDebug
         session.run_mode!
         [[], :resume]
       when :step
-        session.step_mode!
+        session.step_mode!(parse_count(arg))
         [[], :resume]
       when :next
-        session.next_mode!
+        session.next_mode!(parse_count(arg))
         [[], :resume]
       when :break
         [break_cmd(session, arg), :stay]
@@ -53,6 +53,13 @@ module MRDebug
 
     def self.blank?(str)
       str.nil? || trim(str).size == 0
+    end
+
+    # Blank or non-positive defaults to 1.
+    def self.parse_count(arg)
+      return 1 if blank?(arg)
+      n = trim(arg).to_i
+      n > 0 ? n : 1
     end
 
     def self.split(line)

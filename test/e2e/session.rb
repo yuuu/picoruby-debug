@@ -134,6 +134,60 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+# --- step N / next N via the real VM hook, not a hand-called #on_line. ---
+class SessionStepNRecorder < MRDebug::Session
+  attr_reader :stops
+  def initialize
+    super
+    @stops = []
+  end
+  def on_line(file, line, bnd = nil)
+    stopped = super
+    @stops << line if stopped
+    stopped
+  end
+end
+
+# Computed before with_session, not inside it -- once armed, this file's
+# own lines count too.
+session_step_n_l1 = __LINE__ + 8
+session_step_n_l2 = __LINE__ + 8
+session_step_n_l3 = __LINE__ + 8
+
+assert('Session#step_mode!(N), backed by the real VM hook, skips the first N-1 lines') do
+  recorder = SessionStepNRecorder.new
+  with_session(recorder) do
+    recorder.step_mode!(3)
+    x = 1
+    y = 2
+    z = 3
+  end
+  assert_false recorder.stops.include?(session_step_n_l1)
+  assert_false recorder.stops.include?(session_step_n_l2)
+  assert_true recorder.stops.include?(session_step_n_l3)
+ensure
+  MRDebug::Hook.uninstall
+end
+
+session_next_n_l1 = __LINE__ + 8
+session_next_n_l2 = __LINE__ + 8
+session_next_n_l3 = __LINE__ + 8
+
+assert('Session#next_mode!(N), backed by the real VM hook, skips the first N-1 lines') do
+  recorder = SessionStepNRecorder.new
+  with_session(recorder) do
+    recorder.next_mode!(3)
+    x = 1
+    y = 2
+    z = 3
+  end
+  assert_false recorder.stops.include?(session_next_n_l1)
+  assert_false recorder.stops.include?(session_next_n_l2)
+  assert_true recorder.stops.include?(session_next_n_l3)
+ensure
+  MRDebug::Hook.uninstall
+end
+
 # --- Ported from e2e/scenarios/session_next.rb ---
 class SessionNextRecorder < MRDebug::Session
   attr_reader :stops

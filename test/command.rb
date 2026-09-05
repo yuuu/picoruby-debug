@@ -20,6 +20,38 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+class CommandStepNextRecorder < MRDebug::Session
+  attr_reader :step_counts, :next_counts
+  def initialize
+    super
+    @step_counts = []
+    @next_counts = []
+  end
+  def step_mode!(count = 1)
+    @step_counts << count
+    super
+  end
+  def next_mode!(count = 1)
+    @next_counts << count
+    super
+  end
+end
+
+assert('Command.dispatch step/next parse an optional repeat count') do
+  session = CommandStepNextRecorder.new
+  MRDebug::Command.dispatch(session, 'step 3')
+  MRDebug::Command.dispatch(session, 's')
+  MRDebug::Command.dispatch(session, 'next 5')
+  MRDebug::Command.dispatch(session, 'n')
+  MRDebug::Command.dispatch(session, 'n 0')   # non-positive falls back to 1
+  MRDebug::Command.dispatch(session, 'n abc') # non-numeric falls back to 1
+
+  assert_equal [3, 1], session.step_counts
+  assert_equal [5, 1, 1, 1], session.next_counts
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('Command.dispatch break adds and lists breakpoints') do
   session = MRDebug::Session.new
   session.on_line('/path/to/foo.rb', 5, binding) # establishes the "current" file
