@@ -1,10 +1,9 @@
 module MRDebug
   module CLI
-    # Recognizes rdbg's own connection flags but reports them as "not
-    # supported yet" (see CLI.start) -- RemoteSession has nowhere to
-    # connect to until a wire protocol exists.
+    # --port/--sock-path take a value, so parsing walks argv by index
+    # instead of a plain #each.
     class Options
-      attr_reader :file, :line, :help, :version, :unsupported
+      attr_reader :file, :line, :help, :version, :port, :sock_path, :unsupported
 
       def self.parse(argv)
         new(argv)
@@ -15,19 +14,30 @@ module MRDebug
         @line = 1
         @help = false
         @version = false
+        @port = nil
+        @sock_path = nil
         @unsupported = nil
 
-        argv.each do |arg|
+        i = 0
+        while i < argv.size
+          arg = argv[i]
           case arg
           when '--help', '-h'
             @help = true
           when '--version'
             @version = true
-          when '--port', '--sock-path', '--serial', '--open', '-O'
+          when '--port'
+            i += 1
+            @port = argv[i].to_i
+          when '--sock-path'
+            i += 1
+            @sock_path = argv[i]
+          when '--serial', '--open', '-O'
             @unsupported ||= arg
           else
             @file, @line = parse_location(arg) unless arg[0, 1] == '-'
           end
+          i += 1
         end
       end
 

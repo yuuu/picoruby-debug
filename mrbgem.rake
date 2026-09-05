@@ -10,6 +10,7 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
 
   if spec.build.host?
     spec.add_dependency 'mruby-io', core: 'mruby-io'
+    spec.add_dependency 'mruby-socket', core: 'mruby-socket'
     spec.rbfiles += Dir.glob("#{spec.dir}/tools/mrdebug/**/*.rb").sort
 
     # Host CLI binary (docs/plan-phase4.md step 4). mruby's `spec.bins`

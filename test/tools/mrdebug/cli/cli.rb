@@ -26,9 +26,20 @@ assert('CLI::Options recognizes --help/--version') do
 end
 
 assert('CLI::Options flags a connection flag as unsupported') do
-  assert_equal '--port', MRDebug::CLI::Options.parse(['--port', '1234']).unsupported
-  assert_equal '--sock-path', MRDebug::CLI::Options.parse(['--sock-path', '/tmp/x']).unsupported
   assert_equal '--serial', MRDebug::CLI::Options.parse(['--serial', '/dev/ttyUSB0']).unsupported
+  assert_nil MRDebug::CLI::Options.parse(['--serial', '/dev/ttyUSB0']).port
+end
+
+assert('CLI::Options parses --port') do
+  options = MRDebug::CLI::Options.parse(['--port', '4711'])
+  assert_equal 4711, options.port
+  assert_nil options.unsupported
+end
+
+assert('CLI::Options parses --sock-path') do
+  options = MRDebug::CLI::Options.parse(['--sock-path', '/tmp/mrdebug.sock'])
+  assert_equal '/tmp/mrdebug.sock', options.sock_path
+  assert_nil options.unsupported
 end
 
 assert('CLI.start --help writes usage and never opens a Session') do
@@ -42,11 +53,31 @@ end
 
 assert('CLI.start with a connection flag reports it as unsupported, no Session') do
   transport = MRDebug::Transport::Loopback.new
-  MRDebug::CLI.start(['--port', '1234'], transport)
+  MRDebug::CLI.start(['--serial', '/dev/ttyUSB0'], transport)
   assert_equal 1, transport.output.size
   assert_true transport.output[0].include?('not supported yet')
 ensure
   MRDebug::Hook.uninstall
+end
+
+assert('CLI.start --port reports a connection failure instead of stalling on stdin') do
+  server = TCPServer.new('127.0.0.1', 0)
+  port = server.addr[1]
+  server.close # nothing listens at `port` from here on
+
+  transport = MRDebug::Transport::Loopback.new
+  MRDebug::CLI.start(['--port', port.to_s], transport)
+
+  out = transport.output.join
+  assert_true out.include?("connect 127.0.0.1:#{port} failed")
+end
+
+assert('CLI.start --sock-path reports a connection failure instead of stalling on stdin') do
+  transport = MRDebug::Transport::Loopback.new
+  MRDebug::CLI.start(['--sock-path', '/tmp/mrdebug-cli-test-no-such.sock'], transport)
+
+  out = transport.output.join
+  assert_true out.include?('connect /tmp/mrdebug-cli-test-no-such.sock failed')
 end
 
 assert('CLI.start with no args runs a demo session against RemoteSession end to end') do
