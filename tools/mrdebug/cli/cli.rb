@@ -1,6 +1,6 @@
 module MRDebug
   module CLI
-    # No Phase3 wire protocol to connect over yet, so this manufactures a
+    # No wire protocol to connect over yet, so this manufactures a
     # single local stop instead of receiving one from a device -- proving a
     # compiled `mrdebug` binary can drive Command/LocalConsole through a
     # RemoteSession the way a wire-connected build eventually will.
@@ -12,7 +12,7 @@ module MRDebug
       if options.help
         transport.write("#{usage}\n")
       elsif options.version
-        transport.write("mrdebug (Phase4 interim build -- no wire protocol yet)\n")
+        transport.write("mrdebug (interim build -- no wire protocol yet)\n")
       elsif options.unsupported
         transport.write("#{unsupported_message(options.unsupported)}\n")
       else
@@ -23,14 +23,14 @@ module MRDebug
 
     def self.usage
       "Usage: mrdebug [file[:line]]\n" \
-      "  --port PORT, --sock-path PATH, --serial DEV, --open   (not supported yet -- Phase3 is still pending)\n" \
+      "  --port PORT, --sock-path PATH, --serial DEV, --open   (not supported yet)\n" \
       '  --help, --version'
     end
 
     def self.unsupported_message(flag)
-      "#{flag}: not supported yet -- Phase3's wire protocol doesn't exist yet " \
-      '(see docs/phase4-to-phase3-requests.md), so mrdebug cannot attach to a ' \
-      'remote device. Run with no connection flags for a local demo session instead.'
+      "#{flag}: not supported yet -- no wire protocol exists yet, so mrdebug " \
+      'cannot attach to a remote device. Run with no connection flags for a ' \
+      'local demo session instead.'
     end
 
     def self.run_demo_session(options, transport)

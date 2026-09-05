@@ -1,9 +1,7 @@
 module MRDebug
   # This gem's own Ruby source files, so Session can exclude them from
-  # tracing (CLAUDE.md's "Stepping through mrdebug's own source" gap).
-  # Hardcoded, not discovered at runtime (Dir.glob would need a filesystem,
-  # which a PicoRuby target may not have) -- update FILES when adding,
-  # removing, or renaming a file under mrblib/mrdebug/ or tools/mrdebug/.
+  # tracing. Hardcoded, not discovered via Dir.glob (a PicoRuby target may
+  # have no filesystem) -- update FILES when the file list changes.
   module OwnSource
     FILES = [
       'mrblib/mrdebug.rb',

@@ -1,15 +1,6 @@
-# Consolidates hook_frames.rb + hook_frames_edge.rb: MRDebug::Hook's
-# frame-walking API (frame_count/frame_position/frame_binding), both the
-# normal call-stack walk and its edge cases (inert with no paused context,
-# out-of-range/negative depths). Everything else about the VM hook lives
-# in hook.rb.
+# MRDebug::Hook's frame-walking API. Everything else about the VM hook
+# lives in hook.rb.
 
-# Small duplicate of hook.rb's own with_hook: each e2e file is loaded
-# independently by mrbtest, and there's no cross-file require in this
-# gem's e2e layer, so it's redefined here rather than shared.
-#
-# Plain positional `armed`, not a keyword argument -- see hook.rb's copy
-# of this helper for why a kwarg default here crashes mrbtest itself.
 def with_hook(stub, armed = true)
   MRDebug::Hook.install(stub)
   MRDebug::Hook.armed = true if armed
@@ -18,7 +9,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- Ported from e2e/scenarios/hook_frames.rb ---
 class HookFramesProbe
   attr_reader :frames
   def initialize(target_line); @frames = nil; @target_line = target_line; end
@@ -63,7 +53,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- Ported from e2e/scenarios/hook_frames_edge.rb ---
 class HookFramesEdgeProbe
   attr_reader :results
   def initialize(target_line); @results = nil; @target_line = target_line; end

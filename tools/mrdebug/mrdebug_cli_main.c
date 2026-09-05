@@ -1,16 +1,10 @@
 /*
- * Generic launcher for the `mrdebug` host CLI binary (docs/plan-phase4.md
- * step 4). mruby's `spec.bins` convention (tasks/bin.rake) always builds a
- * bin from C sources under tools/<bin-name>/*.c -- there is no way to point
- * a bin directly at a Ruby entry point -- so this file exists purely to
- * satisfy that convention. It carries no debugger logic: it opens an
- * mrb_state (which auto-loads every gem's mrblib, including all of this
- * gem's Ruby -- MRDebug::CLI included), exposes argv as the Ruby-level
- * ARGV constant the same way mruby-bin-mruby's own tools/mruby/mruby.c
- * does, calls MRDebug::CLI.start(ARGV), and maps an uncaught exception to
- * a nonzero exit status. This keeps Phase1's "C is only for what Ruby
- * cannot do" constraint intact in spirit: this file is boilerplate the
- * build system requires, not new debugger behavior.
+ * Generic launcher for the `mrdebug` host CLI binary. mruby's `spec.bins`
+ * convention always builds a bin from C sources under tools/<bin-name>/*.c
+ * with no way to point one at a Ruby entry point directly, so this file
+ * carries no debugger logic: it opens an mrb_state, exposes argv as ARGV,
+ * calls MRDebug::CLI.start(ARGV), and maps an uncaught exception to a
+ * nonzero exit status.
  */
 #include <mruby.h>
 #include <mruby/array.h>

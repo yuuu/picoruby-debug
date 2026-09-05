@@ -37,8 +37,7 @@ module MRDebug
       end
     end
 
-    # Manual trim, not String#strip -- mruby-string-ext methods misbehave
-    # under mrbtest (see docs/plan-phase1.md); core String methods are fine.
+    # Not String#strip -- mruby-string-ext methods misbehave under mrbtest.
     def self.space?(c)
       c == ' ' || c == "\t" || c == "\n" || c == "\r"
     end

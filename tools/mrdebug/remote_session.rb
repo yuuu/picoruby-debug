@@ -1,7 +1,6 @@
 module MRDebug
-  # Interim shape only (docs/plan-phase4.md step 3): forwards straight
-  # through to a same-process Session until Phase3 has a real wire protocol
-  # to forward over instead (docs/phase4-to-phase3-requests.md). `binding`
+  # Interim shape only: forwards straight through to a same-process Session
+  # until a real wire protocol exists to forward over instead. `binding`
   # will need to become a `.eval(expr)`-only proxy once @session is no
   # longer in this process -- a live Binding can't cross that boundary.
   class RemoteSession

@@ -1,12 +1,8 @@
 module MRDebug
   class Session
-    # Binding#debugger/#b/#break -> MRDebug.break -> MRDebug::Hook.enter is a
-    # fixed 3-frame call chain that Hook.enter's invoke_on_line (src/hook.c)
-    # captures mrb->c through *before* swapping into the debugger context --
-    # so a direct stop's Hook.frame_count always includes exactly these 3
-    # extra frames on top of the debuggee's own depth at the call site.
-    # Confirmed empirically across nesting depths, all 3 Binding aliases,
-    # and repeated direct stops in the same session.
+    # Binding#debugger -> MRDebug.break -> MRDebug::Hook.enter is a fixed
+    # 3-frame call chain captured before the debugger context swap, so a
+    # direct stop's Hook.frame_count always includes these 3 extra frames.
     DIRECT_STOP_FRAME_OFFSET = 3
 
     attr_reader :file, :line, :binding
@@ -74,9 +70,7 @@ module MRDebug
       update_armed
     end
 
-    # Called with 2 args from the VM hook (src/hook.c), or with 3 from
-    # MRDebug.break -- an explicit, unconditional stop that already has its
-    # own Binding in hand. Returns true if execution should stop here.
+    # bnd is set only for a direct MRDebug.break stop, which always stops.
     def on_line(file, line, bnd = nil)
       return false unless bnd || should_break?(file, line)
       if bnd.nil? && (@mode == :step || @mode == :next) && @remaining > 1
@@ -104,9 +98,8 @@ module MRDebug
       end
     end
 
-    # A conditionless breakpoint always stops. A conditional one evaluates
-    # against the stopped frame's binding; a raise during evaluation (a
-    # typo'd expression) fails open rather than silently never stopping.
+    # A raise during evaluation fails open (stops) rather than silently
+    # never stopping.
     def condition_met?(bp)
       return true unless bp.condition
       begin

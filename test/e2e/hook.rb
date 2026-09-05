@@ -1,21 +1,9 @@
-# Consolidates what used to be 4 separate files (hook_trace.rb,
-# hook_armed_toggle.rb, hook_gc.rb, hook_stress.rb): low-level
-# MRDebug::Hook mechanics exercised directly against a bare object
-# implementing #on_line, with no Session involved. The frame-walking API
-# (frame_count/frame_position/frame_binding) has its own file,
-# hook_frames.rb.
+# Low-level MRDebug::Hook mechanics against a bare #on_line object, no
+# Session involved. Frame-walking has its own file, hook_frames.rb.
 
-# Every scenario below repeated the same install/arm/uninstall dance;
-# Hook.uninstall alone already disarms too (src/hook.c), so nothing else is
-# needed on the way out.
-#
-# Plain positional `armed`, not a keyword argument: a kwarg default here
-# triggers a real mrbc/mruby-test presym-table crash ("mrc_init_presym:
-# Assertion `id == symTable[i].index + offset' failed") as soon as a
-# callback wrapped by this helper does a real Binding#eval -- reproduced
-# in isolation, not root-caused further (same class of build-time presym
-# fragility as CLAUDE.md's mruby-string-ext note; not worth chasing
-# further when a plain positional argument avoids it entirely).
+# Plain positional `armed`, not a keyword argument -- a kwarg default here
+# triggers a presym-table crash in a real Binding#eval callback (same class
+# of build-time fragility as CLAUDE.md's mruby-string-ext note).
 def with_hook(stub, armed = true)
   MRDebug::Hook.install(stub)
   MRDebug::Hook.armed = true if armed
@@ -24,7 +12,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- Ported from e2e/scenarios/hook_trace.rb ---
 class HookTraceTracer
   attr_reader :seen
   def initialize; @seen = []; end
@@ -58,7 +45,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- Ported from e2e/scenarios/hook_armed_toggle.rb ---
 class HookArmedToggle
   attr_reader :seen
   attr_accessor :disarm_at
@@ -97,8 +83,6 @@ assert('MRDebug::Hook.armed= disarming from inside the callback stops tracing af
     hook_armed_toggle_noisy2
   end
 
-  # Not an exact-array match: entering the method's own irep also traces
-  # the "def" line itself, a VM codegen detail unrelated to this scenario.
   assert_true t.seen.size > 0
   assert_equal t.disarm_at, t.seen.last
   assert_false t.seen.include?(t.disarm_at + 1) # "3 + 3", must not be traced
@@ -107,9 +91,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- Ported from e2e/scenarios/hook_gc.rb: forces a full GC mark while
-# paused inside the callback, so both the debugger's and the debuggee's
-# context must stay reachable. ---
 class HookGcProbe
   attr_reader :n
   def initialize; @n = 0; end
@@ -140,9 +121,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- Ported from e2e/scenarios/hook_stress.rb: the callback recurses
-# deeply and occasionally raises, which must not reach or corrupt the
-# debuggee. ---
 class HookStress
   def initialize; @n = 0; @raised = 0; end
   attr_reader :n, :raised

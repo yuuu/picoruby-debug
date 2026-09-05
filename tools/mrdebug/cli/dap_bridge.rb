@@ -1,12 +1,11 @@
 module MRDebug
   module CLI
-    # A DAP request handler on top of a RemoteSession (route (b): this
-    # class never touches a device directly). #handle takes a parsed
-    # request Hash and returns response/event Hashes, so it's testable
-    # without a socket; #handle_message wraps that with Json for raw text.
-    # stepOut/stackTrace/scopes/variables/evaluate aren't handled yet --
-    # RemoteSession has no frame API to forward them to
-    # (docs/phase4-to-phase3-requests.md). continue/next/stepIn report
+    # A DAP request handler on top of a RemoteSession: this class never
+    # touches a device directly. #handle takes a parsed request Hash and
+    # returns response/event Hashes, so it's testable without a socket;
+    # #handle_message wraps that with Json for raw text. stepOut/
+    # stackTrace/scopes/variables/evaluate aren't handled yet -- RemoteSession
+    # has no frame API to forward them to. continue/next/stepIn report
     # `terminated` right after resuming, since nothing keeps running behind
     # RemoteSession's in-process delegate yet.
     class DapBridge
@@ -64,8 +63,7 @@ module MRDebug
 
       def not_supported(request)
         response(request, {}, success: false,
-                 message: "#{request['command']}: not supported yet -- needs Phase3's frame API " \
-                          'over the wire (see docs/phase4-to-phase3-requests.md)')
+                 message: "#{request['command']}: not supported yet -- needs a frame API over the wire")
       end
 
       def handle_handshake_request(request)

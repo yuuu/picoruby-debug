@@ -2,7 +2,7 @@ module MRDebug
   module CLI
     # Recognizes rdbg's own connection flags but reports them as "not
     # supported yet" (see CLI.start) -- RemoteSession has nowhere to
-    # connect to until Phase3 ships a wire protocol.
+    # connect to until a wire protocol exists.
     class Options
       attr_reader :file, :line, :help, :version, :unsupported
 

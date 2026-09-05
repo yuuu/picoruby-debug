@@ -1,8 +1,5 @@
-# Every test here creates a Session, whose #initialize installs it as
-# MRDebug::Hook's active session; adding a breakpoint or leaving step/next
-# mode set also arms the VM hook. Hook.uninstall in each assert block's
-# ensure keeps that from leaking into the rest of mrbtest's run (mruby's own
-# test suite included) as a permanently-armed hook.
+# Every Session created here must be cleaned up via Hook.uninstall, or an
+# armed hook leaks into the rest of mrbtest's run.
 
 assert('Session#add_breakpoint numbers sequentially, 1-based') do
   session = MRDebug::Session.new
@@ -112,10 +109,8 @@ ensure
 end
 
 assert('Session#step_mode!(N) skips the first N-1 matching lines before stopping') do
-  # Stub Hook.armed= to a no-op -- step_mode! really arms the hook, so this
-  # block's own subsequent lines would otherwise spend counts too. alias_method,
-  # not remove_method: removing a singleton method that shadowed a C-defined
-  # one deletes it outright instead of un-shadowing it.
+  # alias_method, not remove_method -- the latter deletes a shadowed
+  # C-defined method outright instead of un-shadowing it.
   MRDebug::Hook.singleton_class.send(:alias_method, :orig_armed_setter_for_test, :armed=)
   MRDebug::Hook.define_singleton_method(:armed=) { |_flag| }
   begin
@@ -142,10 +137,8 @@ ensure
 end
 
 assert('Session#next_mode! stops at the recorded depth or shallower') do
-  # Hook.frame_count reads the live VM call stack (src/frame.c), which a
-  # plain unit test doesn't control -- stub it so the :next comparison in
-  # Session#should_break? can be checked deterministically, per
-  # docs/plan-phase1.md's Verification 3.
+  # Hook.frame_count reads the live VM call stack, which a plain unit test
+  # doesn't control -- stub it for a deterministic :next comparison.
   depth = [2]
   MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
   MRDebug::Hook.define_singleton_method(:frame_count) { depth[0] }

@@ -1,8 +1,5 @@
-# Exercises MRDebug::UI::LocalConsole (tools/mrdebug/ui/local_console.rb)
-# through a MRDebug::Transport::Loopback instead of real stdio -- the whole
-# point of pulling Transport out from under LocalConsole's old hardcoded
-# STDIN.gets/puts. Before this, LocalConsole had no automated coverage at
-# all (docs/plan-phase1.md's Verification 2 was a hand-typed smoke check).
+# Exercises MRDebug::UI::LocalConsole through a Transport::Loopback instead
+# of real stdio.
 
 def with_session(session)
   MRDebug.session = session
@@ -48,10 +45,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- A full command sequence spanning two stops, proving Loopback delivers
-# every queued message across a resuming command without losing any --
-# the same guarantee the old picoruby-editor-based design broke (see
-# docs/plan-phase1.md's "Session and LineBreakpoint" / Verification 2). ---
 local_console_next_inner_line = __LINE__ + 1
 def local_console_next_inner(x)
   x + 1

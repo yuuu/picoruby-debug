@@ -1,13 +1,6 @@
-# Consolidates brk_entry.rb (Binding#debugger/#b/#break's own file/line/
-# Binding correctness) and session_next_from_binding_debugger.rb (Session's
-# next_mode! tracking depth precisely from a *direct* stop, via
-# Session::DIRECT_STOP_FRAME_OFFSET) -- both exercise the direct
-# Binding#debugger/#b/#break entry point rather than a hook-triggered
-# breakpoint. Hook-triggered Session behavior lives in session.rb.
+# The direct Binding#debugger/#b/#break entry point, not a hook-triggered
+# breakpoint (see session.rb for that).
 
-# Small duplicate of session.rb's own with_session: each e2e file is loaded
-# independently by mrbtest, and there's no cross-file require in this
-# gem's e2e layer, so it's redefined here rather than shared.
 def with_session(session)
   MRDebug.session = session
   yield
@@ -15,7 +8,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- Ported from e2e/scenarios/brk_entry.rb ---
 class BrkEntryStub
   attr_reader :stops
   def initialize; @stops = []; end
@@ -57,9 +49,6 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-# --- Ported from e2e/scenarios/session_next_from_binding_debugger.rb: a
-# direct binding.debugger stop's "next" tracks depth precisely via
-# Session::DIRECT_STOP_FRAME_OFFSET, instead of falling back to step. ---
 class SessionNextFromBindingDebuggerRecorder < MRDebug::Session
   attr_reader :stops
   def initialize
@@ -98,8 +87,6 @@ assert('Session#next_mode! from a direct binding.debugger stop tracks depth prec
   with_session(recorder) do
     session_next_fbd_outer(1)
   end
-  # :next stays armed past with_session's own Hook.uninstall, so that line
-  # itself also gets recorded as a 3rd stop -- hence checking only first(3).
   assert_equal [session_next_fbd_debugger_line, session_next_fbd_call_line, session_next_fbd_final_line],
                recorder.stops.first(3)
   assert_false recorder.stops.include?(session_next_fbd_inner_line)
