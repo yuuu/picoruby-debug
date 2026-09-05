@@ -114,7 +114,7 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
 
 - **`mrbgem.rake`**: declares the gem `mrdebug` and sets
   `MRB_USE_DEBUG_HOOK` (build-wide — see below). Depends only on mruby core
-  gems (`mruby-binding`, `mruby-eval`); `mruby-io` and
+  gems (`mruby-binding`, `mruby-eval`); `mruby-io`, `mruby-socket`, and
   `tools/mrdebug/**/*.rb` (the `(prdb)` prompt) are added only under
   `spec.build.host?`, so a firmware build never sees the console UI's I/O
   dependency at all — the core (`MRDebug`, `Session`, `Command`, the VM
@@ -232,8 +232,27 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   no I/O, used to test `LocalConsole` under `rake test:unit` without stdio.
 - **`tools/mrdebug/transport/stdio.rb`** (host builds only, Phase3) —
   `MRDebug::Transport::Stdio`: `STDIN`/`STDOUT` via `mruby-io`. Strips a
-  trailing newline by hand (`strip_eol`), not `String#chomp` — that's
-  `mruby-string-ext`, which misbehaves under `mrbtest`.
+  trailing newline by hand (`strip_eol`, now shared on `Transport::Base`),
+  not `String#chomp` — that's `mruby-string-ext`, which misbehaves under
+  `mrbtest`.
+- **`tools/mrdebug/transport/socket.rb`** (host builds only) —
+  `MRDebug::Transport::Socket`/`TCP`/`Unix`: `mruby-socket`, wrapping the
+  accepted (`.listen`, device side) or connected (`.connect`, CLI side)
+  socket. `#gets` uses `#sysread`, not mruby-io's buffered `IO#gets` —
+  the latter makes `#write` raise `Errno::ESPIPE` (silently swallowed by
+  the VM hook, freezing the `(prdb)` loop) once a read has more than one
+  line buffered ahead, since `IO#write` on a dual-purpose fd tries to
+  `lseek` back by the leftover count first.
+- **`tools/mrdebug/device.rb`** (host builds only) — `MRDebug.listen_tcp`/
+  `.listen_unix`: device-side setup — `Session.new`, block for the CLI to
+  connect, wire the connection to `LocalConsole`.
+- **`tools/mrdebug/cli/cli.rb`**'s `--port`/`--sock-path` — connect via the
+  transports above, then hand off to `#relay`: a raw `IO.select`-based
+  byte pump between the socket and real `STDIN`/`STDOUT`, since the
+  device's `(prdb) ` prompt has no trailing newline for a `#gets`-based
+  relay to wait on. `Command.dispatch` runs on the device side, so the
+  CLI only relays bytes — no structured RPC layer needed here (contrast
+  `docs/phase4-to-phase3-requests.md`, about the DAP bridge's needs).
 - **`tools/mrdebug/ui/local_console.rb`** (host builds only) —
   `MRDebug::UI::LocalConsole`: the `(prdb)` prompt, one `STDIN.gets` (now via
   a `Transport`, defaulting to `Stdio`) per command. Reading exactly one

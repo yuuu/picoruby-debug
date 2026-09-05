@@ -78,6 +78,30 @@ would otherwise show a line or two of `mrdebug`'s own source right after a
 `binding.debugger` stop, the way CRuby's `debug` gem needs a skip-list for
 stdlib/gems.
 
+### Remote debugging over a socket
+
+`binding.debugger`'s `(prdb)` prompt doesn't have to be your script's own
+stdin/stdout. On the device side (host builds only):
+
+```ruby
+MRDebug.listen_tcp(4711) # blocks until a client connects
+binding.debugger
+```
+
+then, from a second terminal or machine, the `mrdebug` CLI binary connects
+and relays your terminal to that prompt:
+
+```sh
+build/host/bin/mrdebug --port 4711
+```
+
+`MRDebug.listen_unix('/tmp/my.sock')` and `mrdebug --sock-path /tmp/my.sock`
+work the same way over a Unix domain socket. `Command.dispatch` still runs
+entirely on the device side — the CLI only pumps bytes between the socket
+and your terminal — so this works exactly like running the script locally,
+just over a wire. See `docs/manual-verify-socket-transport.md` for a full
+worked example.
+
 ## How it works
 
 - `binding.debugger` calls into `MRDebug::Session`, a plain Ruby object that
@@ -124,6 +148,7 @@ middle ground in phase 1's design.
 - `mruby-binding`, `mruby-eval` (mruby core gems — for `Binding` and
   `Binding#eval`, which `print` uses)
 - `mruby-io` (host builds only — `MRDebug::UI::LocalConsole` reads `STDIN`)
+- `mruby-socket` (host builds only — `MRDebug::Transport::TCP`/`Unix`)
 
 No PicoRuby gems. `tools/mrdebug/ui/local_console.rb` (the `(prdb)` prompt
 itself) is only compiled into `build.host?` builds; the core (`MRDebug`,
@@ -152,8 +177,9 @@ Not in phase 1, roughly in the order a future phase might tackle them:
 - `quit`, `list`, `bt`/`frame`/`up`/`down`, `watch`, `display`, `finish`,
   conditional/method breakpoints, `catch`, `step N`/`next N`
 - PicoRuby / R2P2 support
-- Wire protocol, transport abstraction (serial included), a host CLI binary,
-  a host-side DAP bridge for `vscode-rdbg` compatibility
+- A serial transport (TCP/Unix socket transport and the host CLI binary
+  exist — see [Remote debugging over a socket](#remote-debugging-over-a-socket))
+- A host-side DAP bridge for `vscode-rdbg` compatibility
 - An on-device console UI gem (`mrdebug-console`) for PicoRuby targets
 
 See `docs/plan-phase1.md`'s "後続フェーズに送る項目" section for the full list
