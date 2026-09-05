@@ -10,8 +10,11 @@ now a small, dependency-minimal mrbgem (`mrdebug`) instead of something
 built around PicoRuby's console stack. See `docs/plan-phase1.md` for the
 full design rationale.
 
-**Phase 1 status**: mruby only (no PicoRuby/R2P2 support yet), six commands
-(`continue` / `step` / `next` / `break` / `delete` / `print`). See
+**Phase 1 status**: mruby only, six commands (`continue` / `step` / `next` /
+`break` / `delete` / `print`). The core also builds and runs under
+PicoRuby's `PICORB_VM_MRUBY` POSIX host build (see
+`docs/phase3-picoruby-host-verification.md`), but there's no PicoRuby/R2P2
+support beyond that yet — no on-device UI, no R2P2-ESP32 build. See
 [Roadmap](#roadmap) for what's intentionally not here yet.
 
 ## Installation
