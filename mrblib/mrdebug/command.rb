@@ -7,6 +7,7 @@ module MRDebug
       'b' => :break, 'break' => :break,
       'd' => :delete, 'delete' => :delete,
       'p' => :print, 'print' => :print,
+      'display' => :display,
     }
 
     # Parses one command line and dispatches it against `session`.
@@ -29,6 +30,8 @@ module MRDebug
         [delete_cmd(session, arg), :stay]
       when :print
         [print_cmd(session, arg), :stay]
+      when :display
+        [display_cmd(session, arg), :stay]
       else
         [["unknown command: #{line}"], :stay]
       end
@@ -127,6 +130,12 @@ module MRDebug
       else
         ["No breakpoint ##{arg}"]
       end
+    end
+
+    def self.display_cmd(session, arg)
+      return ['Usage: display <expression>'] if blank?(arg)
+      n = session.add_display(arg)
+      ["#{n}: #{arg}"]
     end
 
     def self.print_cmd(session, arg)

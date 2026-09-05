@@ -16,11 +16,23 @@ module MRDebug
       @breakpoints = []
       @mode = :run
       @next_depth = nil
+      @displays = []
       MRDebug::Hook.install(self)
     end
 
     def breakpoints
       @breakpoints
+    end
+
+    # Doesn't touch armed state -- see docs/known-bugs.md.
+    def add_display(expr)
+      @displays << DisplayExpression.new(expr)
+      @displays.size
+    end
+
+    def display_lines
+      return [] if @displays.empty? || @binding.nil?
+      @displays.map { |d| [d.expr, d.result(@binding)] }
     end
 
     def add_breakpoint(file, line, condition = nil)

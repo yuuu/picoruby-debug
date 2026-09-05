@@ -146,6 +146,28 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('Command.dispatch display registers an expression, numbered sequentially') do
+  session = MRDebug::Session.new
+  session.on_line('/x.rb', 1, binding)
+
+  out, action = MRDebug::Command.dispatch(session, 'display x')
+  assert_equal :stay, action
+  assert_equal ['1: x'], out
+
+  out, _ = MRDebug::Command.dispatch(session, 'display y + 1')
+  assert_equal ['2: y + 1'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch display with no expression shows usage') do
+  session = MRDebug::Session.new
+  out, _ = MRDebug::Command.dispatch(session, 'display')
+  assert_equal ['Usage: display <expression>'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('Command.dispatch print with no expression shows usage') do
   session = MRDebug::Session.new
   out, _ = MRDebug::Command.dispatch(session, 'print')

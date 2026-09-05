@@ -70,6 +70,37 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('Session#display_lines is empty before any stop or with nothing registered') do
+  session = MRDebug::Session.new
+  assert_equal [], session.display_lines
+  session.add_display('1 + 1')
+  assert_equal [], session.display_lines # no stop yet: no binding to evaluate against
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#display_lines evaluates registered expressions against the stopped binding') do
+  session = MRDebug::Session.new
+  x = 42
+  session.add_display('x')
+  session.add_display('x + 1')
+  session.on_line('/x.rb', 1, binding)
+  assert_equal [['x', '42'], ['x + 1', '43']], session.display_lines
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#display_lines reports a raised exception instead of crashing') do
+  session = MRDebug::Session.new
+  session.add_display('this_is_not_defined')
+  session.on_line('/x.rb', 1, binding)
+  expr, result = session.display_lines[0]
+  assert_equal 'this_is_not_defined', expr
+  assert_true result.include?('NoMethodError')
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('Session#step_mode! stops on every line') do
   session = MRDebug::Session.new
   session.step_mode!
