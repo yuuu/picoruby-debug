@@ -150,9 +150,6 @@ module MRDebug
       ["#{n}: #{arg}"]
     end
 
-    # No argument shows the selected frame's own position (session.file/line);
-    # "<line>" or "<file>:<line>" (parse_location, same as break) targets
-    # somewhere else instead.
     def self.list_cmd(session, arg)
       file = session.file
       return ['No current position (not stopped anywhere yet)'] if file.nil?
@@ -165,11 +162,7 @@ module MRDebug
       source_listing(file, line)
     end
 
-    # Reads `file` off disk and formats LIST_CONTEXT lines on either side of
-    # `line`. Core (mrblib/) has no I/O dependency of its own -- `File` only
-    # exists here at all on a host build (mrbgem.rake adds mruby-io under
-    # spec.build.host?), so `defined?(File)` is the fallback for a firmware
-    # build that never linked it in.
+    # defined?(File) guards a firmware build with no mruby-io linked in.
     def self.source_listing(file, line)
       return ['Source listing is not available (no filesystem access in this build)'] unless defined?(File)
 
@@ -180,8 +173,7 @@ module MRDebug
       end
       return ["Cannot open #{file}"] if text.nil?
 
-      # Not String#lines/#each_line -- mruby-string-ext, misbehaves under
-      # mrbtest (see CLAUDE.md). #split is a core String method.
+      # Not String#lines/#each_line -- mruby-string-ext, unsafe under mrbtest.
       all_lines = text.split("\n")
       return ["Line #{line} is out of range for #{file} (#{all_lines.size} lines)"] if line > all_lines.size
 

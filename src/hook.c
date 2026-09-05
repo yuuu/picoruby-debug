@@ -84,9 +84,7 @@ dbg_context_reset(mrb_state *mrb, struct mrb_context *c)
   c->ci->stack = c->stbase;
   c->ci->vis = 1;
 #ifndef MRDEBUG_NO_SVARS
-  /* PicoRuby's vendored mruby fork has no `svars` field on struct
-   * mrb_context (mainline-only, Fiber-scoped special-variable cache) --
-   * mrbgem.rake defines MRDEBUG_NO_SVARS there to skip this. */
+  /* PicoRuby's mrb_context has no svars field (mrbgem.rake defines this). */
   if (c->svars) c->svars[0] = NULL;
 #endif
 

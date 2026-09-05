@@ -5,14 +5,8 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
 
   spec.build.defines << 'MRB_USE_DEBUG_HOOK'
 
-  # PicoRuby's PICORB_VM_MRUBY builds vendor mruby-binding/mruby-eval/
-  # mruby-io/mruby-socket under mrbgems/picoruby-mruby/lib/mruby/mrbgems
-  # rather than MRUBY_ROOT/mrbgems, so `core:` (which always looks under
-  # MRUBY_ROOT) can't find them there; `gemdir:` pointing straight at the
-  # vendored path is what PicoRuby's own stdlib.gembox already does for the
-  # same two gems. `build.picoruby?` only exists on PicoRuby's build
-  # subclass (lib/picoruby/build.rb monkeypatch), hence respond_to? first --
-  # plain mruby keeps using `core:` exactly as before.
+  # PicoRuby vendors these gems outside MRUBY_ROOT, so core: can't find
+  # them there; gemdir: is PicoRuby's own stdlib.gembox pattern.
   if spec.build.respond_to?(:picoruby?) && spec.build.picoruby?
     mruby_dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
     spec.add_dependency 'mruby-binding', gemdir: "#{mruby_dir}/mruby-binding"
@@ -40,9 +34,7 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
     spec.bins << 'mrdebug'
   end
 
-  # PicoRuby's vendored mruby fork's struct mrb_context has no `svars`
-  # field (mainline-only, added for Fiber-scoped special variables) --
-  # see src/hook.c's dbg_context_reset for the guard this feeds.
+  # PicoRuby's mrb_context has no svars field; see src/hook.c's guard.
   if spec.build.respond_to?(:picoruby?) && spec.build.picoruby?
     spec.build.defines << 'MRDEBUG_NO_SVARS'
   end

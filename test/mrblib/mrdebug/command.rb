@@ -248,11 +248,9 @@ end
 
 assert('Command.dispatch list with no argument reads the current file (this test file) from disk') do
   session = MRDebug::Session.new
-  session.on_line(__FILE__, 1, binding) # line 1 of this very file, below
+  session.on_line(__FILE__, 1, binding)
   out, action = MRDebug::Command.dispatch(session, 'list')
   assert_equal :stay, action
-  # Line 1 is this file's very first line -- context clamps at the top
-  # instead of going negative.
   assert_equal '=> 1  # Every test here creates a Session, which registers itself with', out.first
 ensure
   MRDebug::Hook.uninstall
@@ -260,16 +258,13 @@ end
 
 assert('Command.dispatch list <line> targets a different line of the current file') do
   session = MRDebug::Session.new
-  session.on_line(__FILE__, 50, binding) # "current" file only, target overridden below
+  session.on_line(__FILE__, 50, binding)
   out, _ = MRDebug::Command.dispatch(session, 'list 1')
   assert_equal '=> 1  # Every test here creates a Session, which registers itself with', out.first
 ensure
   MRDebug::Hook.uninstall
 end
 
-# Known, unique content for the mid-file listing test below -- placed with
-# comfortable room on both sides so LIST_CONTEXT (5) never clips the file's
-# own start/end.
 list_probe_line1 = __LINE__ + 1
 list_probe_a = 1 # list-probe-a
 list_probe_line2 = __LINE__ + 1
