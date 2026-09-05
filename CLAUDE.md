@@ -204,6 +204,10 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   via hand-rolled `String#[]` slicing (see "Avoid `mruby-string-ext`
   methods" above), stable numbering shared with `Session`'s breakpoint
   array (`delete` deactivates in place rather than compacting).
+- **`mrblib/mrdebug/own_source.rb`** — `MRDebug::OwnSource`: the hardcoded
+  suffix-matched file list `Session#should_break?` checks first, to never
+  stop (or count against `step N`/`watch`) inside this gem's own code. See
+  "Known gaps" below.
 - **`mrblib/mrdebug/command.rb`** — `MRDebug::Command.dispatch(session,
   line)` parses one command line and returns `[output_lines, :stay |
   :resume]`; it never prints. This is what keeps the command layer testable
@@ -231,13 +235,17 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
 
 ## Known gaps (in progress)
 
-- **Stepping through mrdebug's own source.** `step` (and `next`'s fallback
-  case, if any remain) has no notion of "skip this gem's own files" — the
-  kind of skip-list CRuby's `debug` gem ships with for stdlib/gems. See
-  `README.md`'s "A known rough edge" section for what this looks like from
-  a user's perspective. Fixing it generally needs path-based filtering
-  against the gem's own install directory, deliberately deferred rather
-  than folded into phase 1's fixed 6-command scope.
+- **~~Stepping through mrdebug's own source~~ — fixed.**
+  `MRDebug::OwnSource` (`mrblib/mrdebug/own_source.rb`) is a hardcoded,
+  suffix-matched list of this gem's own Ruby files; `Session#should_break?`
+  checks it first and refuses to stop (or count against `step N`/`watch`)
+  inside them. Hardcoded rather than discovered at runtime (`Dir.glob` would
+  need a filesystem, which a PicoRuby target may not have) — remember to
+  update `OwnSource::FILES` when adding, removing, or renaming a file under
+  `mrblib/mrdebug/` or `tools/mrdebug/`. This turned out to be the root
+  cause behind two problems that looked like mruby/VM bugs during Phase3
+  track B (`step N`/`next N`'s counter being consumed by mrdebug's own
+  code, and part of `watch`'s line-shift symptom) — see `docs/known-bugs.md`.
 - **Performance**: `RUN` mode with one or more breakpoints funcalls into
   Ruby once per *executed source line*, everywhere, not just near a
   breakpoint's file — the old C implementation had a fast path that skipped

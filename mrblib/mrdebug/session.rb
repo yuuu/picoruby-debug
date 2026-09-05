@@ -87,6 +87,7 @@ module MRDebug
     private
 
     def should_break?(file, line)
+      return false if OwnSource.file?(file)
       case @mode
       when :step then true
       when :next then MRDebug::Hook.frame_count <= @next_depth

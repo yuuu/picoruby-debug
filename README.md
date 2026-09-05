@@ -68,17 +68,15 @@ file the VM reports, so `break foo.rb:8` matches `/path/to/foo.rb`.
 There's no `quit` yet — let the script run to completion with `continue`.
 An unrecognized command prints `unknown command: ...` and stays at the prompt.
 
-### A known rough edge
+### Stepping over mrdebug's own source
 
-If you type `step` or `next` **immediately** at a `binding.debugger`
-stop (as opposed to a stop from a real breakpoint), the very next
-`step`/`next` may show a line or two of `mrdebug`'s own source
-(`mrblib/mrdebug.rb` etc.) before reaching your code. `step`'s definition —
-stop at literally every executed line — has no notion of "skip this gem's
-own files" yet (the kind of skip-list CRuby's `debug` gem ships with); that's
-future-phase work. `next`'s depth tracking, however, *is* accurate in this
-situation (see `docs/plan-phase1.md`'s design notes if you're curious why
-`binding.debugger`-triggered stops need a fixed frame-count correction).
+`Session` never stops inside this gem's own files (`mrblib/mrdebug/`,
+`tools/mrdebug/`) — `MRDebug::OwnSource` is a hardcoded, suffix-matched list
+of them (same idiom as breakpoint file matching), checked before any other
+stop decision. `step`'s definition — stop at literally every executed line —
+would otherwise show a line or two of `mrdebug`'s own source right after a
+`binding.debugger` stop, the way CRuby's `debug` gem needs a skip-list for
+stdlib/gems.
 
 ## How it works
 
@@ -153,7 +151,6 @@ Not in phase 1, roughly in the order a future phase might tackle them:
 
 - `quit`, `list`, `bt`/`frame`/`up`/`down`, `watch`, `display`, `finish`,
   conditional/method breakpoints, `catch`, `step N`/`next N`
-- A skip-list for stepping over a gem's (including this one's) own files
 - PicoRuby / R2P2 support
 - Wire protocol, transport abstraction (serial included), a host CLI binary,
   a host-side DAP bridge for `vscode-rdbg` compatibility
