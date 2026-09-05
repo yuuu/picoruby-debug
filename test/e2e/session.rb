@@ -83,6 +83,32 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+session_watch_target_line = __LINE__ + 2
+def session_watch_add(i)
+  i + 1
+end
+
+# Pins known-bugs.md's unresolved bug #1, not the desired behavior: a call
+# crossing scope (the watched name going in/out of scope) is itself
+# mistaken for a value change, so the hit lands on session_watch_add's def
+# line instead of its body -- 0 hits at the target line, not 2. Fixing
+# that bug should turn this into a failing test, which is the point: it
+# flags that the frame-selection redesign known-bugs.md calls for landed.
+assert('a watch does not yet stop on the line its value actually changes (known-bugs.md #1)') do
+  recorder = SessionConditionalRecorder.new
+  with_session(recorder) do
+    recorder.add_watch('i')
+    recorder.run_mode!
+    session_watch_add(1)
+    session_watch_add(1)
+    session_watch_add(2)
+  end
+  hits_at_target = recorder.stops.select { |l| l == session_watch_target_line }
+  assert_equal [], hits_at_target
+ensure
+  MRDebug::Hook.uninstall
+end
+
 class SessionStepRecorder < MRDebug::Session
   attr_reader :stops
   def initialize

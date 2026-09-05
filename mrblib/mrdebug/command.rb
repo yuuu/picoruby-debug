@@ -9,6 +9,7 @@ module MRDebug
       'l' => :list, 'list' => :list,
       'p' => :print, 'print' => :print,
       'display' => :display,
+      'watch' => :watch,
     }
 
     # Lines of context shown before/after the target line by `list`.
@@ -38,6 +39,8 @@ module MRDebug
         [print_cmd(session, arg), :stay]
       when :display
         [display_cmd(session, arg), :stay]
+      when :watch
+        [watch_cmd(session, arg), :stay]
       else
         [["unknown command: #{line}"], :stay]
       end
@@ -190,6 +193,18 @@ module MRDebug
         i += 1
       end
       out
+    end
+
+    def self.watch_cmd(session, arg)
+      return list_watches(session) if blank?(arg)
+      n = session.add_watch(arg)
+      ["Watch #{n}: #{arg}"]
+    end
+
+    def self.list_watches(session)
+      lines = []
+      session.watches.each_with_index { |w, i| lines << w.numbered_line(i + 1) }
+      lines.empty? ? ['No watches set'] : lines
     end
 
     def self.print_cmd(session, arg)

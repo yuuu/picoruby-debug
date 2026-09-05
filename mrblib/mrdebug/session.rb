@@ -14,6 +14,7 @@ module MRDebug
       @next_depth = nil
       @remaining = 1
       @displays = []
+      @watches = []
       MRDebug::Hook.install(self)
     end
 
@@ -21,10 +22,20 @@ module MRDebug
       @breakpoints
     end
 
+    def watches
+      @watches
+    end
+
     # Doesn't touch armed state -- see docs/known-bugs.md.
     def add_display(expr)
       @displays << DisplayExpression.new(expr)
       @displays.size
+    end
+
+    # Doesn't touch armed state -- see docs/known-bugs.md.
+    def add_watch(expr)
+      @watches << WatchExpression.new(expr)
+      @watches.size
     end
 
     def display_lines
@@ -89,6 +100,7 @@ module MRDebug
 
     def should_break?(file, line)
       return false if OwnSource.file?(file)
+      return true if watch_triggered?
       case @mode
       when :step then true
       when :next then MRDebug::Hook.frame_count <= @next_depth
@@ -96,6 +108,13 @@ module MRDebug
         bp = @breakpoints.find { |b| b.match?(file, line) }
         bp ? condition_met?(bp) : false
       end
+    end
+
+    # Skips the frame_binding fetch entirely when there's nothing to check.
+    def watch_triggered?
+      return false if @watches.empty?
+      bnd = MRDebug::Hook.frame_binding(0)
+      @watches.map { |w| w.changed?(bnd) }.any?
     end
 
     # A raise during evaluation fails open (stops) rather than silently
@@ -110,7 +129,7 @@ module MRDebug
     end
 
     def update_armed
-      MRDebug::Hook.armed = @mode != :run || @breakpoints.any?(&:active?)
+      MRDebug::Hook.armed = @mode != :run || @breakpoints.any?(&:active?) || @watches.any?
     end
   end
 end

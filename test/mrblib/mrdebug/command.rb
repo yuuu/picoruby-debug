@@ -200,6 +200,30 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('Command.dispatch watch registers an expression, numbered sequentially') do
+  session = MRDebug::Session.new
+
+  out, action = MRDebug::Command.dispatch(session, 'watch x')
+  assert_equal :stay, action
+  assert_equal ['Watch 1: x'], out
+
+  out, _ = MRDebug::Command.dispatch(session, 'watch y > 0')
+  assert_equal ['Watch 2: y > 0'], out
+
+  out, _ = MRDebug::Command.dispatch(session, 'watch')
+  assert_equal ['  #1 watch: x', '  #2 watch: y > 0'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch watch with no watches set reports that') do
+  session = MRDebug::Session.new
+  out, _ = MRDebug::Command.dispatch(session, 'watch')
+  assert_equal ['No watches set'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('Command.dispatch print with no expression shows usage') do
   session = MRDebug::Session.new
   out, _ = MRDebug::Command.dispatch(session, 'print')
