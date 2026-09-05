@@ -147,6 +147,7 @@ assert('Session#next_mode! stops at the recorded depth or shallower') do
   # Session#should_break? can be checked deterministically, per
   # docs/plan-phase1.md's Verification 3.
   depth = [2]
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
   MRDebug::Hook.define_singleton_method(:frame_count) { depth[0] }
   begin
     session = MRDebug::Session.new
@@ -164,12 +165,14 @@ assert('Session#next_mode! stops at the recorded depth or shallower') do
     MRDebug::Hook.uninstall
   end
 ensure
-  MRDebug::Hook.singleton_class.send(:remove_method, :frame_count)
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
 end
 
 assert('Session#next_mode!(N) must satisfy the depth condition N times before stopping') do
   # Same Hook.armed= stub as step_mode!(N)'s test above, for the same reason.
   depth = [2]
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
   MRDebug::Hook.define_singleton_method(:frame_count) { depth[0] }
   MRDebug::Hook.singleton_class.send(:alias_method, :orig_armed_setter_for_test, :armed=)
   MRDebug::Hook.define_singleton_method(:armed=) { |_flag| }
@@ -184,7 +187,8 @@ assert('Session#next_mode!(N) must satisfy the depth condition N times before st
     MRDebug::Hook.uninstall
   end
 ensure
-  MRDebug::Hook.singleton_class.send(:remove_method, :frame_count)
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
   MRDebug::Hook.singleton_class.send(:alias_method, :armed=, :orig_armed_setter_for_test)
   MRDebug::Hook.singleton_class.send(:remove_method, :orig_armed_setter_for_test)
 end

@@ -43,7 +43,7 @@ MRDEBUG_MRUBY_DIR=/path/to/mruby rake test:unit   # mrbtest
 Both drive mruby's own `Rakefile` with `MRUBY_CONFIG=e2e/build_config.rb`
 and `MRUBY_BUILD_DIR=<this repo>/build`, so nothing lands inside the mruby
 checkout itself. `e2e/build_config.rb` turns on `conf.enable_debug` (`mrbc
--g`): without it, AOT-compiled `test/*.rb` has no line info, and the VM hook
+-g`): without it, AOT-compiled `test/**/*.rb` has no line info, and the VM hook
 can never be observed firing from a `test/e2e/*.rb` assertion (`if (line <
 0) return;` in `src/hook.c` bails immediately) — a plain `bin/mruby
 script.rb` run doesn't need this, since it compiles at runtime and always
@@ -64,12 +64,20 @@ printf 'n\np x\nc\n' | build/host/bin/mruby script.rb
 
 ### Two test layers, one runner
 
-- `test/*.rb` — plain `assert` (`test/line_breakpoint.rb`, `test/session.rb`,
-  `test/command.rb`): pure-Ruby logic, no VM hook involved. `Session`'s
+- `test/**/*.rb` (outside `test/e2e/`) — plain `assert`, pure-Ruby logic, no
+  VM hook involved. Mirrors the source tree being tested:
+  `test/mrblib/mrdebug/*.rb` for `mrblib/mrdebug/*.rb`,
+  `test/tools/mrdebug/**/*.rb` for `tools/mrdebug/**/*.rb`. `Session`'s
   `:next`-mode depth comparison is checked by stubbing
   `MRDebug::Hook.frame_count` (`Hook.define_singleton_method(:frame_count)
-  { ... }`, removed again in an `ensure`) rather than relying on a real
-  paused context.
+  { ... }`) rather than relying on a real paused context. **Restore a
+  stubbed `Hook` method via `alias_method`, not `remove_method`**:
+  `remove_method` on a singleton method that shadowed a C-defined one
+  deletes it outright instead of un-shadowing it (`test/mrblib/mrdebug/session.rb`'s
+  `frame_count`/`armed=` stubs both alias the original aside first, then
+  alias it back in the `ensure`) — confirmed by a real crash this mistake
+  caused once a later test's real `next_mode!` call found `frame_count`
+  gone entirely.
 - `test/e2e/*.rb` — also plain `assert`, but exercises the real VM hook,
   `binding.debugger`, and the command layer together (ported from what used
   to be ad hoc `e2e/scenarios/*.rb` scripts checked by eye; that approach
@@ -88,7 +96,7 @@ everything down.
 **Avoid `mruby-string-ext` methods (`String#strip`, `#end_with?`,
 `#start_with?`, ...) in code that also runs under `mrbtest`.** They come up
 as `NoMethodError` specifically when called from this gem's own
-`test/*.rb`/`test/e2e/*.rb` (not from a plain `bin/mruby script.rb` run) —
+`test/**/*.rb` (not from a plain `bin/mruby script.rb` run) —
 confirmed via a clean rebuild, not a caching artifact, and not fixed by
 declaring `mruby-test` as a build-time gem dependency up front. The likely
 cause is a presym (symbol-ID) mismatch between `mrbc` and the `mruby-test`
