@@ -11,5 +11,11 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
   if spec.build.host?
     spec.add_dependency 'mruby-io', core: 'mruby-io'
     spec.rbfiles += Dir.glob("#{spec.dir}/tools/mrdebug/**/*.rb").sort
+
+    # Host CLI binary (docs/plan-phase4.md step 4). mruby's `spec.bins`
+    # convention (tasks/bin.rake) builds this from C sources under
+    # tools/mrdebug/*.c (a bare launcher only -- see that file's header);
+    # all real behavior lives in the Ruby just added above.
+    spec.bins << 'mrdebug'
   end
 end
