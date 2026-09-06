@@ -225,6 +225,18 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   wiring landed) calls `ui.on_stop(self)` synchronously if a UI is attached,
   *inside* `#on_line` — matching the "prompt loop runs inside the hook
   callback's own stack frame" design the old repo used too.
+  - **`#stop_reason_for`** (the private predicate `#on_line` uses; was
+    `#should_break?`) returns *why* to stop, not a bool: the matched
+    `LineBreakpoint` or `WatchVarBreakpoint` object, `:step`, `:next`, or
+    `nil` to keep going. `#on_line` stores it in `@stopped_by` (also
+    `:debugger` for a direct `binding.debugger` stop), and **`#stop_banner`**
+    turns that into the headline the UI prints. It finds which list
+    (`@breakpoints` / `@watches`) holds `@stopped_by` and hands that list to
+    `LineBreakpoint#stop_banner` / `WatchVarBreakpoint#stop_banner`, which
+    locate their own number in it (`siblings.index(self) + 1`) and own their
+    "Breakpoint N: …" / "Watchpoint N: …" wording — no per-class branch in
+    `Session`. A step/next/debugger stop is in neither list, so it falls
+    back to a plain `"Stop: file:line"`.
   - **`Session::DIRECT_STOP_FRAME_OFFSET = 3`**: `Binding#debugger` →
     `MRDebug.break` → `MRDebug::Hook.enter` is a fixed 3-frame call chain
     that `Hook.enter`'s `invoke_on_line` captures `mrb->c` through *before*
@@ -249,8 +261,15 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   via hand-rolled `String#[]` slicing (see "Avoid `mruby-string-ext`
   methods" above), stable numbering shared with `Session`'s breakpoint
   array (`delete` deactivates in place rather than compacting).
+  `#stop_banner(siblings, location)` returns the `"Breakpoint N: …"` headline,
+  N being its own index in `siblings` + 1.
+- **`mrblib/mrdebug/watch_var_breakpoint.rb`** — `MRDebug::WatchVarBreakpoint`
+  (named after `LineBreakpoint`; was `WatchExpression`): a watched expression
+  string, its last evaluated value, `#changed?(bnd)`, and `#stop_banner`
+  returning `"Watchpoint N: …"` (the label the user sees is still
+  "Watchpoint").
 - **`mrblib/mrdebug/own_source.rb`** — `MRDebug::OwnSource`: the hardcoded
-  suffix-matched file list `Session#should_break?` checks first, to never
+  suffix-matched file list `Session#stop_reason_for` checks first, to never
   stop (or count against `step N`/`watch`) inside this gem's own code. See
   "Known gaps" below.
 - **`mrblib/mrdebug/command.rb`** — `MRDebug::Command.dispatch(session,
@@ -335,12 +354,15 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   line at a time is what avoids the old `picoruby-editor`-based design's
   known bug (piped/pasted multi-command input losing everything after a
   resuming command) — there's no shared read-ahead buffer to lose data from.
+  The stop headline it prints is `session.stop_banner` (see `session.rb`
+  above), not a hardcoded string — so a step/next stop reads `Stop: …`, not
+  `Breakpoint: …`.
 
 ## Known gaps (in progress)
 
 - **~~Stepping through mrdebug's own source~~ — fixed.**
   `MRDebug::OwnSource` (`mrblib/mrdebug/own_source.rb`) is a hardcoded,
-  suffix-matched list of this gem's own Ruby files; `Session#should_break?`
+  suffix-matched list of this gem's own Ruby files; `Session#stop_reason_for`
   checks it first and refuses to stop (or count against `step N`/`watch`)
   inside them. Hardcoded rather than discovered at runtime (`Dir.glob` would
   need a filesystem, which a PicoRuby target may not have) — remember to

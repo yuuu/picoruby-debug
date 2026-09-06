@@ -5,7 +5,7 @@ module MRDebug
     # direct stop's Hook.frame_count always includes these 3 extra frames.
     DIRECT_STOP_FRAME_OFFSET = 3
 
-    attr_reader :file, :line, :binding
+    attr_reader :file, :line, :binding, :stopped_by
     attr_accessor :ui
 
     def initialize
@@ -34,7 +34,7 @@ module MRDebug
 
     # Doesn't touch armed state -- see docs/known-bugs.md.
     def add_watch(expr)
-      @watches << WatchExpression.new(expr)
+      @watches << WatchVarBreakpoint.new(expr)
       @watches.size
     end
 
@@ -81,9 +81,17 @@ module MRDebug
       update_armed
     end
 
+    # Headline for the current stop, delegated to whatever @stopped_by is.
+    def stop_banner
+      loc = "#{@file}:#{@line}"
+      siblings = [@breakpoints, @watches].find { |list| list.include?(@stopped_by) }
+      siblings ? @stopped_by.stop_banner(siblings, loc) : "Stop: #{loc}"
+    end
+
     # bnd is set only for a direct MRDebug.break stop, which always stops.
     def on_line(file, line, bnd = nil)
-      return false unless bnd || should_break?(file, line)
+      reason = bnd ? :debugger : stop_reason_for(file, line)
+      return false unless reason
       if bnd.nil? && (@mode == :step || @mode == :next) && @remaining > 1
         @remaining -= 1
         return false
@@ -92,29 +100,32 @@ module MRDebug
       @line = line
       @binding = bnd || MRDebug::Hook.frame_binding(0)
       @direct_stop = !bnd.nil?
+      @stopped_by = reason
       ui.on_stop(self) if ui
       true
     end
 
     private
 
-    def should_break?(file, line)
-      return false if OwnSource.file?(file)
-      return true if watch_triggered?
+    # nil, or why we stop: a LineBreakpoint/WatchVarBreakpoint object, :step, or :next.
+    def stop_reason_for(file, line)
+      return nil if OwnSource.file?(file)
+      wp = triggered_watch
+      return wp if wp
       case @mode
-      when :step then true
-      when :next then MRDebug::Hook.frame_count <= @next_depth
+      when :step then :step
+      when :next then MRDebug::Hook.frame_count <= @next_depth ? :next : nil
       else
         bp = @breakpoints.find { |b| b.match?(file, line) }
-        bp ? condition_met?(bp) : false
+        bp && condition_met?(bp) ? bp : nil
       end
     end
 
-    # Skips the frame_binding fetch entirely when there's nothing to check.
-    def watch_triggered?
-      return false if @watches.empty?
+    # #select, not #find: every watch must re-check (and cache) its value each line.
+    def triggered_watch
+      return nil if @watches.empty?
       bnd = MRDebug::Hook.frame_binding(0)
-      @watches.map { |w| w.changed?(bnd) }.any?
+      @watches.select { |w| w.changed?(bnd) }.first
     end
 
     # A raise during evaluation fails open (stops) rather than silently

@@ -21,6 +21,10 @@ module MRDebug
       active? && @line == line && file[-@file.size, @file.size] == @file
     end
 
+    def stop_banner(siblings, location)
+      "Breakpoint #{siblings.index(self) + 1}: #{location}"
+    end
+
     def to_s
       condition ? "#{file}:#{line} if #{condition}" : "#{file}:#{line}"
     end

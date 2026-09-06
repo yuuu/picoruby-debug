@@ -49,6 +49,40 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('Session#stop_banner: the LineBreakpoint that was hit renders it, with its number') do
+  session = MRDebug::Session.new
+  session.add_breakpoint('a.rb', 1)
+  session.add_breakpoint('foo.rb', 10)
+  session.on_line('/path/to/foo.rb', 10)
+  assert_same session.breakpoints[1], session.stopped_by
+  assert_equal 'Breakpoint 2: /path/to/foo.rb:10', session.stop_banner
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#stop_banner: step/next/binding.debugger stops render a plain "Stop:" line') do
+  # Stub Hook.armed= so step mode can't self-trace this test and clobber @file/@line.
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_armed_setter_for_test, :armed=)
+  MRDebug::Hook.define_singleton_method(:armed=) { |_flag| }
+  begin
+    session = MRDebug::Session.new
+
+    session.step_mode!
+    session.on_line('/x.rb', 3)
+    assert_equal :step, session.stopped_by
+    assert_equal 'Stop: /x.rb:3', session.stop_banner
+
+    session.on_line('/x.rb', 4, binding)
+    assert_equal :debugger, session.stopped_by
+    assert_equal 'Stop: /x.rb:4', session.stop_banner
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :armed=, :orig_armed_setter_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_armed_setter_for_test)
+end
+
 assert('Session#on_line does not stop on a non-matching file or line') do
   session = MRDebug::Session.new
   session.add_breakpoint('foo.rb', 10)

@@ -49,13 +49,23 @@ puts y
 
 ```
 $ bin/mruby script.rb
-Breakpoint: script.rb:6
+Stop: script.rb:6
 (prdb) n
-Breakpoint: script.rb:7
+Stop: script.rb:7
 (prdb) p y
 nil
 (prdb) c
 3
+```
+
+The headline is `Stop:` for a `binding.debugger` / `step` / `next` stop, and
+`Breakpoint <n>:` only when an actual breakpoint fires:
+
+```
+(prdb) break 7
+Breakpoint 1 added at script.rb:7
+(prdb) c
+Breakpoint 1: script.rb:7
 ```
 
 No setup call is needed: on a host build, hitting `binding.debugger` with

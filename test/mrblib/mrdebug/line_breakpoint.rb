@@ -27,3 +27,9 @@ assert('LineBreakpoint#condition defaults to nil; #to_s includes it when set') d
   assert_equal 'x > 5', conditional.condition
   assert_equal 'foo.rb:10 if x > 5', conditional.to_s
 end
+
+assert('LineBreakpoint#stop_banner names itself and its number') do
+  first = MRDebug::LineBreakpoint.new('a.rb', 1)
+  bp = MRDebug::LineBreakpoint.new('foo.rb', 10)
+  assert_equal 'Breakpoint 2: /path/to/foo.rb:10', bp.stop_banner([first, bp], '/path/to/foo.rb:10')
+end

@@ -8,7 +8,7 @@ module MRDebug
       end
 
       def on_stop(session)
-        @transport.write("Breakpoint: #{session.file}:#{session.line}\n")
+        @transport.write("#{session.stop_banner}\n")
         session.display_lines.each { |expr, result| @transport.write("#{expr} = #{result}\n") }
         loop do
           @transport.write('(prdb) ')

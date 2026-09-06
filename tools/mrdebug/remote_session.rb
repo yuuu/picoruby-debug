@@ -20,6 +20,14 @@ module MRDebug
       @session.binding
     end
 
+    def stopped_by
+      @session.stopped_by
+    end
+
+    def stop_banner
+      @session.stop_banner
+    end
+
     def breakpoints
       @session.breakpoints
     end

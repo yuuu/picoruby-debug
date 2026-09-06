@@ -14,7 +14,7 @@ module MRDebug
       'mrblib/mrdebug/transport.rb',
       'mrblib/mrdebug/transport/loopback.rb',
       'mrblib/mrdebug/ui.rb',
-      'mrblib/mrdebug/watch_expression.rb',
+      'mrblib/mrdebug/watch_var_breakpoint.rb',
       'tools/mrdebug/transport/stdio.rb',
       'tools/mrdebug/ui/local_console.rb',
     ]

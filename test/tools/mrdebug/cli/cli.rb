@@ -106,7 +106,7 @@ assert('CLI.start with no args runs a demo session against RemoteSession end to 
   MRDebug::CLI.start(['foo.rb:10'], transport)
 
   out = transport.output.join
-  assert_true out.include?('Breakpoint: foo.rb:10')
+  assert_true out.include?('Stop: foo.rb:10')
   assert_true out.include?('2')
   assert_true out.include?('session ended')
 ensure
@@ -124,7 +124,7 @@ end
 assert('CLI.run_demo_session wires RemoteSession, not the Session, into LocalConsole') do
   transport = MRDebug::Transport::Loopback.new(['continue'])
   MRDebug::CLI.run_demo_session(MRDebug::CLI::Options.new(['x.rb:5']), transport)
-  assert_true transport.output.join.include?('Breakpoint: x.rb:5')
+  assert_true transport.output.join.include?('Stop: x.rb:5')
 ensure
   MRDebug::Hook.uninstall
 end

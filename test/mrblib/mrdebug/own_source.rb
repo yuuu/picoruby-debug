@@ -6,7 +6,7 @@ assert('OwnSource.file? matches mrdebug\'s own source by suffix') do
   assert_true MRDebug::OwnSource.file?('/home/user/mrdebug/mrblib/mrdebug/display_expression.rb')
   assert_true MRDebug::OwnSource.file?('/home/user/mrdebug/mrblib/mrdebug/line_breakpoint.rb')
   assert_true MRDebug::OwnSource.file?('/home/user/mrdebug/mrblib/mrdebug/own_source.rb')
-  assert_true MRDebug::OwnSource.file?('/home/user/mrdebug/mrblib/mrdebug/watch_expression.rb')
+  assert_true MRDebug::OwnSource.file?('/home/user/mrdebug/mrblib/mrdebug/watch_var_breakpoint.rb')
   assert_true MRDebug::OwnSource.file?('/home/user/mrdebug/mrblib/mrdebug/transport.rb')
   assert_true MRDebug::OwnSource.file?('/home/user/mrdebug/mrblib/mrdebug/transport/loopback.rb')
   assert_true MRDebug::OwnSource.file?('/home/user/mrdebug/mrblib/mrdebug/ui.rb')

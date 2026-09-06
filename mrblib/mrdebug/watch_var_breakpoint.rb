@@ -1,5 +1,5 @@
 module MRDebug
-  class WatchExpression
+  class WatchVarBreakpoint
     UNSET = Object.new
 
     attr_reader :expr
@@ -16,6 +16,10 @@ module MRDebug
       changed = @last_value == UNSET || current != @last_value
       @last_value = current
       changed
+    end
+
+    def stop_banner(siblings, location)
+      "Watchpoint #{siblings.index(self) + 1}: #{location}"
     end
 
     def to_s

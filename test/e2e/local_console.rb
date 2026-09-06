@@ -21,7 +21,7 @@ assert('LocalConsole, driven by a Loopback transport, evaluates print and resume
   end
 
   assert_equal [
-    "Breakpoint: #{__FILE__}:#{line}\n",
+    "Stop: #{__FILE__}:#{line}\n",
     '(prdb) ',
     "41\n",
     '(prdb) ',
@@ -40,7 +40,7 @@ assert('LocalConsole treats a nil #gets (transport EOF/disconnect) as continue, 
     line = __LINE__; binding.debugger
   end
 
-  assert_equal ["Breakpoint: #{__FILE__}:#{line}\n", '(prdb) '], transport.output
+  assert_equal ["Stop: #{__FILE__}:#{line}\n", '(prdb) '], transport.output
 ensure
   MRDebug::Hook.uninstall
 end
@@ -67,11 +67,11 @@ assert('LocalConsole processes a whole piped-in command sequence across a next a
   end
 
   assert_equal [
-    "Breakpoint: #{__FILE__}:#{local_console_next_debugger_line}\n",
+    "Stop: #{__FILE__}:#{local_console_next_debugger_line}\n",
     '(prdb) ',
     "7\n",
     '(prdb) ',
-    "Breakpoint: #{__FILE__}:#{local_console_next_call_line}\n",
+    "Stop: #{__FILE__}:#{local_console_next_call_line}\n",
     '(prdb) ',
     "7\n",
     '(prdb) ',
