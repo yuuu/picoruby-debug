@@ -80,6 +80,27 @@ assert('CLI.start --sock-path reports a connection failure instead of stalling o
   assert_true out.include?('connect /tmp/mrdebug-cli-test-no-such.sock failed')
 end
 
+assert('CLI.start with no args auto-connects to MRDEBUG_PORT and reports failure instead of stalling') do
+  server = TCPServer.new('127.0.0.1', 0)
+  port = server.addr[1]
+  server.close # nothing listens at `port` from here on
+
+  saved_port = ENV['MRDEBUG_PORT']
+  saved_sock = ENV['MRDEBUG_SOCK']
+  ENV.delete('MRDEBUG_SOCK')
+  ENV['MRDEBUG_PORT'] = port.to_s
+
+  transport = MRDebug::Transport::Loopback.new
+  MRDebug::CLI.start([], transport)
+
+  out = transport.output.join
+  assert_true out.include?("connect 127.0.0.1:#{port} failed")
+ensure
+  if saved_port.nil? then ENV.delete('MRDEBUG_PORT') else ENV['MRDEBUG_PORT'] = saved_port end
+  if saved_sock.nil? then ENV.delete('MRDEBUG_SOCK') else ENV['MRDEBUG_SOCK'] = saved_sock end
+  MRDebug::Hook.uninstall
+end
+
 assert('CLI.start with no args runs a demo session against RemoteSession end to end') do
   transport = MRDebug::Transport::Loopback.new(['print 1 + 1', 'continue'])
   MRDebug::CLI.start(['foo.rb:10'], transport)

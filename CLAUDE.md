@@ -129,16 +129,17 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
 
 - **`mrbgem.rake`**: declares the gem `mrdebug` and sets
   `MRB_USE_DEBUG_HOOK` (build-wide — see below). Depends only on mruby core
-  gems (`mruby-binding`, `mruby-eval`); `mruby-io`, `mruby-socket`, and
-  `tools/mrdebug/**/*.rb` (the `(prdb)` prompt) are added only under
-  `spec.build.host?`, so a firmware build never sees the console UI's I/O
-  dependency at all — the core (`MRDebug`, `Session`, `Command`, the VM
-  hook) has none. `spec.rbfiles +=` (rather than replacing `spec.rbfiles`)
-  is what makes this additive-and-safe: confirmed via
-  `MRuby::Gem::Specification#setup` giving `@rbfiles` its default value
+  gems (`mruby-binding`, `mruby-eval`); `mruby-io`, `mruby-socket`,
+  `mruby-env` (the last only for `MRDEBUG_PORT`/`MRDEBUG_SOCK` in
+  `MRDebug.autostart`), and `tools/mrdebug/**/*.rb` (the `(prdb)` prompt)
+  are added only under `spec.build.host?`, so a firmware build never sees
+  the console UI's I/O dependency at all — the core (`MRDebug`, `Session`,
+  `Command`, the VM hook) has none. `spec.rbfiles +=` (rather than
+  replacing `spec.rbfiles`) is what makes this additive-and-safe: confirmed
+  via `MRuby::Gem::Specification#setup` giving `@rbfiles` its default value
   from `mrblib/**/*.rb` *before* `instance_eval(&@initializer)` runs this
   file's block (`lib/mruby/gem.rb` in the mruby checkout). Each of these
-  four dependencies is declared via `core:` on mainline mruby, or
+  dependencies is declared via `core:` on mainline mruby, or
   `gemdir:` pointing straight at PicoRuby's vendored copy
   (`mrbgems/picoruby-mruby/lib/mruby/mrbgems/<name>`) when
   `spec.build.respond_to?(:picoruby?) && spec.build.picoruby?` — `core:`
@@ -208,7 +209,11 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   latter also calls `Hook.install`, so assigning *any* session — a real
   `Session` or a lightweight test double implementing `#on_line` — makes it
   the hook's active session too) and `.break(bnd)`, `Binding#debugger`'s
-  entry point.
+  entry point. `.break` calls `.autostart` when `@session` is still `nil`,
+  then bails unless one got set — a no-op `.autostart` here (overridden on
+  host builds by `tools/mrdebug/device.rb`) is what keeps a firmware build,
+  or any build that never wired a UI, silently doing nothing rather than
+  funcalling `on_line` on `nil`.
 - **`mrblib/binding.rb`** — reopens core `Binding` to add
   `#debugger`/`#b`/`#break`, all delegating to `MRDebug.break(self)`.
   `Binding#source_location` (from mruby's own `mruby-binding` gem) is
@@ -297,13 +302,32 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   `lseek` back by the leftover count first.
 - **`tools/mrdebug/device.rb`** (host builds only) — `MRDebug.listen_tcp`/
   `.listen_unix`: device-side setup — `Session.new`, block for the CLI to
-  connect, wire the connection to `LocalConsole`.
-- **`tools/mrdebug/cli/cli.rb`**'s `--port`/`--sock-path` — connect via the
+  connect, wire the connection to `LocalConsole`. Also `MRDebug.autostart`
+  (overriding the core no-op), which `MRDebug.break` calls on the first
+  `binding.debugger` hit when no session exists — a three-way branch on the
+  environment: `MRDEBUG_SOCK` → `listen_unix`; else `MRDEBUG_PORT` →
+  `listen_tcp` on it; else `attach_stdio` (a `Session` whose `LocalConsole`
+  talks to this process's own `STDIN`/`STDOUT` — no socket, no separate
+  `mrdebug` CLI, the common local case and what makes README's Usage
+  example work with zero setup). This is what lets a script carry nothing
+  but `binding.debugger`. It's a one-shot by construction (`@session.nil?`
+  gates it); a listener bind failure propagates out of `binding.debugger`
+  rather than being swallowed. `DEFAULT_PORT` (4711, rdbg's convention) is
+  only the fallback for a *port that was asked for but unspecified* — a
+  bare `MRDebug.listen_tcp`, or `mrdebug` with no args — not for
+  `autostart`, which goes to stdio when `MRDEBUG_PORT` is unset.
+  `env_value` tolerates a build without `mruby-env` (`defined?(ENV)`) and
+  treats a blank value as unset.
+- **`tools/mrdebug/cli/cli.rb`**'s `--port`/`--sock-path` (and no args at
+  all, which reads `MRDEBUG_SOCK`/`MRDEBUG_PORT`, falling back to
+  `DEFAULT_PORT`, via `connect_auto`) — connect via the
   transports above, then hand off to `#relay`: a raw `IO.select`-based
   byte pump between the socket and real `STDIN`/`STDOUT`, since the
   device's `(prdb) ` prompt has no trailing newline for a `#gets`-based
-  relay to wait on. `Command.dispatch` runs on the device side, so the
-  CLI only relays bytes — no structured RPC layer needed here (contrast
+  relay to wait on. A bare `mrdebug FILE:LINE` (a positional arg, no
+  connection flag) still runs the interim local demo session instead.
+  `Command.dispatch` runs on the device side, so the CLI only relays
+  bytes — no structured RPC layer needed here (contrast
   `docs/phase4-to-phase3-requests.md`, about the DAP bridge's needs).
 - **`tools/mrdebug/ui/local_console.rb`** (host builds only) —
   `MRDebug::UI::LocalConsole`: the `(prdb)` prompt, one `STDIN.gets` (now via

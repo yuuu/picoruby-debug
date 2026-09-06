@@ -12,7 +12,13 @@ module MRDebug
     MRDebug::Hook.install(session)
   end
 
+  # Overridden on host builds (tools/mrdebug/device.rb); a no-op otherwise.
+  def self.autostart
+  end
+
   def self.break(bnd)
+    autostart if @session.nil?
+    return unless @session
     file, line = bnd.source_location
     MRDebug::Hook.enter(file, line, bnd)
   end

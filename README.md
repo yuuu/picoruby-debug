@@ -29,8 +29,10 @@ conf.gem gemdir: '/absolute/path/to/your/mrdebug/checkout'
 (Once this repository is renamed off `picoruby-debug`, `conf.gem github:
 '<owner>/mrdebug', branch: 'main'` will work the same way.)
 
-That's it — no build flag, no `ENV` variable. Adding the gem enables
-`binding.debugger` for that build.
+That's it — no build flag to set. Adding the gem enables `binding.debugger`
+for that build. (`MRDEBUG_PORT` / `MRDEBUG_SOCK` are read only for remote
+debugging — see [below](#remote-debugging-over-a-socket) — and are optional
+there too.)
 
 ## Usage
 
@@ -55,6 +57,12 @@ nil
 (prdb) c
 3
 ```
+
+No setup call is needed: on a host build, hitting `binding.debugger` with
+nothing else configured drops you straight into the `(prdb)` prompt on the
+script's own terminal (piped input like `printf 'n\nc\n' | bin/mruby
+script.rb` works too). See [Remote debugging](#remote-debugging-over-a-socket)
+to drive that prompt from a separate process instead.
 
 Add more breakpoints with `break <line>` — matched by **suffix** against the
 file the VM reports, so `break foo.rb:8` matches `/path/to/foo.rb`.
@@ -84,27 +92,45 @@ stdlib/gems.
 
 ### Remote debugging over a socket
 
-`binding.debugger`'s `(prdb)` prompt doesn't have to be your script's own
-stdin/stdout. On the device side (host builds only):
+The only line your script ever needs is `binding.debugger`. What that
+prompt is wired to, the first time it's hit with nothing else configured,
+depends on the environment:
+
+| Environment | Where the `(prdb)` prompt goes |
+| --- | --- |
+| neither variable set (default) | the script's own STDIN/STDOUT — no separate process |
+| `MRDEBUG_PORT=<n>` | a TCP listener on `127.0.0.1:<n>`; the script blocks until `mrdebug` connects |
+| `MRDEBUG_SOCK=<path>` | a Unix-domain-socket listener at `<path>`; same blocking behavior |
+
+So the remote workflow adds no debugger code, only an env var and a second
+terminal:
+
+```sh
+MRDEBUG_PORT=4711 bin/mruby script.rb   # blocks at the first binding.debugger
+```
+
+```sh
+build/host/bin/mrdebug                   # reads MRDEBUG_PORT/MRDEBUG_SOCK too; relays your terminal
+```
+
+To choose the endpoint from the script instead of the environment (this
+also lets `mrdebug` connect *before* the script reaches the breakpoint),
+call `MRDebug.listen_tcp` / `MRDebug.listen_unix` before the first
+`binding.debugger`:
 
 ```ruby
-MRDebug.listen_tcp(4711) # blocks until a client connects
+MRDebug.listen_tcp(4711)              # or MRDebug.listen_unix('/tmp/my.sock')
 binding.debugger
 ```
 
-then, from a second terminal or machine, the `mrdebug` CLI binary connects
-and relays your terminal to that prompt:
-
 ```sh
-build/host/bin/mrdebug --port 4711
+build/host/bin/mrdebug --port 4711    # or --sock-path /tmp/my.sock
 ```
 
-`MRDebug.listen_unix('/tmp/my.sock')` and `mrdebug --sock-path /tmp/my.sock`
-work the same way over a Unix domain socket. `Command.dispatch` still runs
-entirely on the device side — the CLI only pumps bytes between the socket
-and your terminal — so this works exactly like running the script locally,
-just over a wire. See `docs/manual-verify-socket-transport.md` for a full
-worked example.
+`Command.dispatch` still runs entirely on the device side — the CLI only
+pumps bytes between the socket and your terminal — so this works exactly
+like running the script locally, just over a wire. See
+`docs/manual-verify-socket-transport.md` for a full worked example.
 
 ## How it works
 
@@ -153,6 +179,8 @@ middle ground in phase 1's design.
   `Binding#eval`, which `print` uses)
 - `mruby-io` (host builds only — `MRDebug::UI::LocalConsole` reads `STDIN`)
 - `mruby-socket` (host builds only — `MRDebug::Transport::TCP`/`Unix`)
+- `mruby-env` (host builds only — `MRDEBUG_PORT`/`MRDEBUG_SOCK` for the
+  autostart listener)
 
 No PicoRuby gems. `tools/mrdebug/ui/local_console.rb` (the `(prdb)` prompt
 itself) is only compiled into `build.host?` builds; the core (`MRDebug`,

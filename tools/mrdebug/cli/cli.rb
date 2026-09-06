@@ -16,14 +16,27 @@ module MRDebug
         connect_unix(options, transport)
       elsif options.unsupported
         transport.write("#{unsupported_message(options.unsupported)}\n")
+      elsif argv.empty?
+        connect_auto(transport)
       else
         transport.write("(interim build: no remote device yet -- simulating a single local stop)\n")
         run_demo_session(options, transport)
       end
     end
 
+    # `mrdebug` with no args: MRDEBUG_SOCK, else MRDEBUG_PORT, else 4711.
+    def self.connect_auto(transport)
+      sock = MRDebug.default_sock
+      if sock
+        connect_unix(Options.parse(['--sock-path', sock]), transport)
+      else
+        connect_tcp(Options.parse(['--port', MRDebug.default_port.to_s]), transport)
+      end
+    end
+
     def self.usage
       "Usage: mrdebug [file[:line]]\n" \
+      "  (no args)         connect to MRDEBUG_SOCK, else 127.0.0.1:MRDEBUG_PORT (#{MRDebug::DEFAULT_PORT})\n" \
       "  --port PORT        connect to a device listening on 127.0.0.1:PORT\n" \
       "  --sock-path PATH   connect to a device listening on a Unix socket\n" \
       "  --serial DEV, --open   (not supported yet)\n" \

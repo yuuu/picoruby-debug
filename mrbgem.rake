@@ -21,9 +21,11 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
       mruby_dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
       spec.add_dependency 'mruby-io', gemdir: "#{mruby_dir}/mruby-io"
       spec.add_dependency 'mruby-socket', gemdir: "#{mruby_dir}/mruby-socket"
+      spec.add_dependency 'mruby-env', gemdir: "#{mruby_dir}/mruby-env"
     else
       spec.add_dependency 'mruby-io', core: 'mruby-io'
       spec.add_dependency 'mruby-socket', core: 'mruby-socket'
+      spec.add_dependency 'mruby-env', core: 'mruby-env'
     end
     spec.rbfiles += Dir.glob("#{spec.dir}/tools/mrdebug/**/*.rb").sort
 
