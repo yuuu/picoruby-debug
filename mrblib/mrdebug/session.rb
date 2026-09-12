@@ -49,17 +49,45 @@ module MRDebug
       @breakpoints.size
     end
 
+    def add_method_breakpoint(class_name, method_name, singleton = false, condition = nil)
+      @breakpoints << MethodBreakpoint.new(class_name, method_name, singleton, condition)
+      sync_method_names
+      update_armed
+      @breakpoints.size
+    end
+
     def remove_breakpoint(n)
       bp = @breakpoints[n - 1]
       return false unless bp && bp.active?
       bp.deactivate!
+      sync_method_names
       update_armed
       true
     end
 
     def clear_breakpoints
       @breakpoints.each(&:deactivate!)
+      sync_method_names
       update_armed
+    end
+
+    # Called from the VM hook (src/hook.c) at a call to a watched method
+    # name: returns the MethodBreakpoint that matches this receiver, or nil.
+    # Like line breakpoints, only active in run mode (not mid step/next).
+    def method_bp_for(recv, method_sym, is_cfunc)
+      return nil unless @mode == :run
+      name = method_sym.to_s
+      bp = nil
+      @breakpoints.each do |b|
+        next unless b.is_a?(MethodBreakpoint) && b.method_name == name
+        if b.matches_call?(recv)
+          bp = b
+          break
+        end
+      end
+      return nil unless bp
+      bp.cfunc! if is_cfunc
+      bp
     end
 
     def run_mode!
@@ -89,10 +117,12 @@ module MRDebug
     end
 
     # bnd is set only for a direct MRDebug.break stop, which always stops.
-    def on_line(file, line, bnd = nil)
-      reason = bnd ? :debugger : stop_reason_for(file, line)
+    # forced is a MethodBreakpoint the VM hook already matched at a call site.
+    def on_line(file, line, bnd = nil, forced = nil)
+      reason = forced || (bnd ? :debugger : stop_reason_for(file, line))
       return false unless reason
-      if bnd.nil? && (@mode == :step || @mode == :next) && @remaining > 1
+      return false if forced.is_a?(MethodBreakpoint) && !condition_met?(forced)
+      if bnd.nil? && forced.nil? && (@mode == :step || @mode == :next) && @remaining > 1
         @remaining -= 1
         return false
       end
@@ -106,6 +136,12 @@ module MRDebug
     end
 
     private
+
+    def sync_method_names
+      names = []
+      @breakpoints.each { |b| names << b.method_sym if b.is_a?(MethodBreakpoint) && b.active? }
+      MRDebug::Hook.watch_method_names(names)
+    end
 
     # nil, or why we stop: a LineBreakpoint/WatchVarBreakpoint object, :step, or :next.
     def stop_reason_for(file, line)
