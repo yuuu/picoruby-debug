@@ -79,12 +79,95 @@ module MRDebug
       return list_breakpoints(session) if blank?(arg)
 
       location, condition = split_condition(arg)
+      suffix = condition ? " if #{condition}" : ''
+
+      spec = parse_method_spec(location)
+      if spec
+        n = session.add_method_breakpoint(spec[0], spec[1], spec[2], condition)
+        label = spec[0] ? "#{spec[0]}#{spec[2] ? '.' : '#'}#{spec[1]}" : spec[1]
+        return ["Breakpoint #{n} added at #{label}#{suffix}"]
+      end
+
       file, ln = parse_location(session.file, location)
       return ['Invalid line number'] unless ln && ln > 0
 
       n = session.add_breakpoint(file, ln, condition)
-      suffix = condition ? " if #{condition}" : ''
       ["Breakpoint #{n} added at #{file}:#{ln}#{suffix}"]
+    end
+
+    # "Foo#bar" / "Foo::Bar#bar" / "Foo.bar" / "bar" -> [class_name|nil,
+    # method_name, singleton?]. nil when it isn't a method spec (fall back
+    # to a line breakpoint).
+    def self.parse_method_spec(loc)
+      hash = char_index(loc, '#')
+      if hash
+        cname = loc[0, hash]
+        mname = loc[(hash + 1)..-1]
+        return nil unless const_path?(cname) && method_name?(mname)
+        return [cname, mname, false]
+      end
+      dot = last_dot_index(loc)
+      if dot
+        cname = loc[0, dot]
+        mname = loc[(dot + 1)..-1]
+        return nil unless const_path?(cname) && method_name?(mname)
+        return [cname, mname, true]
+      end
+      return [nil, loc, false] if method_name?(loc)
+      nil
+    end
+
+    def self.char_index(str, ch)
+      i = 0
+      while i < str.size
+        return i if str[i] == ch
+        i += 1
+      end
+      nil
+    end
+
+    def self.last_dot_index(str)
+      i = str.size - 1
+      while i >= 0
+        return i if str[i] == '.'
+        i -= 1
+      end
+      nil
+    end
+
+    # "Foo" or "Foo::Bar::Baz": each segment starts A-Z, rest word chars.
+    def self.const_path?(str)
+      return false if str.empty?
+      str.split('::').all? { |seg| const_name?(seg) }
+    end
+
+    def self.const_name?(seg)
+      return false if seg.empty?
+      return false unless seg[0] >= 'A' && seg[0] <= 'Z'
+      word_rest?(seg, 1)
+    end
+
+    # Starts a-z or _, rest word chars, optional trailing ! ? =.
+    def self.method_name?(str)
+      return false if str.empty?
+      c = str[0]
+      return false unless (c >= 'a' && c <= 'z') || c == '_'
+      last = str.size - 1
+      tail = str[last]
+      stop = (tail == '!' || tail == '?' || tail == '=') ? last : str.size
+      word_rest?(str, 1, stop)
+    end
+
+    def self.word_rest?(str, from, upto = nil)
+      upto ||= str.size
+      i = from
+      while i < upto
+        c = str[i]
+        ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+        return false unless ok
+        i += 1
+      end
+      true
     end
 
     # Splits "<location> if <condition>" at the first " if ". Returns

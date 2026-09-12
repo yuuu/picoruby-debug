@@ -301,3 +301,62 @@ assert('Session#next_mode! tracks depth precisely on both a direct-stop and a la
 ensure
   MRDebug::Hook.uninstall
 end
+
+class SessionMethodBpRecorder < MRDebug::Session
+  attr_reader :stops
+  def initialize
+    super
+    @stops = []
+  end
+  def on_line(file, line, bnd = nil, forced = nil)
+    stopped = super
+    @stops << [line, stopped_by] if stopped
+    stopped
+  end
+end
+
+class E2eMbTarget
+  def instance_hit(x)
+    x + 1
+  end
+
+  def self.singleton_hit
+    41
+  end
+end
+class E2eMbChild < E2eMbTarget; end
+
+assert('Session, via the real VM hook, stops inside a method breakpoint -- instance (with inheritance), singleton, and C method') do
+  recorder = SessionMethodBpRecorder.new
+  with_session(recorder) do
+    recorder.add_method_breakpoint('E2eMbTarget', 'instance_hit')
+    recorder.add_method_breakpoint('E2eMbTarget', 'singleton_hit', true)
+    recorder.add_method_breakpoint('Array', 'first')
+
+    E2eMbTarget.new.instance_hit(1)
+    E2eMbChild.new.instance_hit(2) # policy B: subclass instance still hits
+    E2eMbTarget.singleton_hit
+    [10, 20].first
+  end
+
+  kinds = recorder.stops.map { |(_, by)| by.class }
+  assert_equal [MRDebug::MethodBreakpoint] * 4, kinds
+
+  labels = recorder.stops.map { |(_, by)| by.to_s }
+  assert_equal ['E2eMbTarget#instance_hit', 'E2eMbTarget#instance_hit',
+                'E2eMbTarget.singleton_hit', 'Array#first'], labels
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('a method breakpoint is only active in run mode, not mid step') do
+  recorder = SessionMethodBpRecorder.new
+  with_session(recorder) do
+    recorder.add_method_breakpoint('E2eMbTarget', 'instance_hit')
+    recorder.step_mode!
+    E2eMbTarget.new.instance_hit(3)
+  end
+  assert_false recorder.stops.any? { |(_, by)| by.is_a?(MRDebug::MethodBreakpoint) }
+ensure
+  MRDebug::Hook.uninstall
+end
