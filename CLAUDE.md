@@ -4,334 +4,394 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this gem is
 
-`picoruby-debug` is an in-progress debugger for PicoRuby, aiming for
-CRuby's `debug` gem-like functionality. It only works on the **mruby** VM
-(`PICORB_VM_MRUBY`); on mruby/c it is inert (`src/mrubyc/debug.c` is an empty
-init). See `README.md` in this directory for full usage docs (commands,
-build config setup, POSIX host debugging) — read it before making changes,
-since it documents behavior and constraints that are easy to regress.
+`mrdebug` is an interactive debugger for **mruby**, rebuilt from scratch
+(the old `picoruby-debug` gem) to run with nothing but a plain mruby
+checkout — see `docs/plan-phase1.md` for the design rationale and the
+step-by-step history of how this codebase got to its current shape, and
+`docs/plan-phase2.md` for what comes after phase 1 (scope and ordering
+for phase 2 onward).
+Read `README.md` before making changes; it documents the command set and
+the known rough edges (particularly the "stepping shows mrdebug's own
+source" limitation) that are easy to regress.
+
+PicoRuby/R2P2 support is still not a planned phase of its own — phase 1
+remains mruby-only by design, and no on-device console UI gem
+(`mrdebug-console` or similar, still Phase3 scope) exists yet. What *has*
+landed is two narrow, mechanical compatibility fixes so this gem's
+existing core (Ruby + `src/hook.c`/`src/frame.c`) also builds and runs
+under PicoRuby's `PICORB_VM_MRUBY` host build without changing mainline
+mruby's behavior at all: `mrbgem.rake`'s dependency resolution branches
+`core:` vs `gemdir:` (PicoRuby vendors `mruby-binding`/`mruby-eval`/
+`mruby-io`/`mruby-socket` under `mrbgems/picoruby-mruby/lib/mruby/mrbgems`
+rather than exposing them under its own `MRUBY_ROOT/mrbgems`), and
+`src/hook.c`'s `dbg_context_reset` guards a `svars` field PicoRuby's
+vendored mruby fork's `struct mrb_context` doesn't have. See
+`docs/phase3-picoruby-host-verification.md` for what was confirmed working
+(`step`/`next`/`break`/`delete`/`print`/`continue`, PICORB_VM_MRUBY POSIX
+host build only) and what remains untouched (R2P2-ESP32 cross build,
+on-device UI, PicoRuby's own `mruby-c`/femtoruby VM). Don't add further
+`PICORB_VM_MRUBY`-style branching beyond these two fixes without that
+being its own explicit, planned phase.
 
 ## Design policy
 
-Standard input/output (the `(prdb)` prompt via `Editor::Line`, `puts`, source
-listing, etc.) is implemented in Ruby (`mrblib/debugger.rb`). Everything else — VM hook
-installation, breakpoint storage/matching, mode tracking, context switching,
-Binding construction — is implemented in C (`src/mruby/debug.c`/`debugger.c`)
-as much as possible. When adding a feature, keep new console I/O on the Ruby
-side and new VM-level mechanics on the C side rather than mixing the two;
-this is why none of `src/mruby/*.c` has any HAL/stdio dependency.
+**C is only for what Ruby cannot do**: reading file/line out of an irep,
+walking the raw callinfo stack, and safely getting control from the VM's
+per-instruction dispatch. That's `src/hook.c` (VM hook mechanics) and
+`src/frame.c` (frame walking) — the only two C files in this gem. Everything
+else (breakpoint matching, session state, the command parser, the `(prdb)`
+prompt) is Ruby. When adding a feature, assume it belongs in Ruby unless you
+can point at a specific thing only C can do (as the frame API's `mrb_context`
+walking or the VM hook's context swap need to).
 
 ## Build & test
 
-There is no dedicated test suite for this gem yet. This repo is a standalone
-mrbgem (like `picoruby-ws2812`), not a picoruby checkout itself, so exercising
-changes means pointing a picoruby build at your local working copy:
-
-```ruby
-conf.gem gemdir: '/absolute/path/to/your/picoruby-debug/checkout'
-```
-
-This gem does not depend on `ENV['PICORB_DEBUG']` or any other build flag —
-`binding.debugger` works as soon as the gem is in the build, on any target
-(POSIX host, ESP32, etc.). It changes `sizeof(mrb_state)` build-wide (see
-below), so it affects every build using that build config. R2P2-ESP32
-currently adds this gem unconditionally in `xtensa-esp-picoruby.rb`
-(`ENV['PICORB_DEBUG']` there only gates unrelated flags like
-`ESTALLOC_DEBUG`/`conf.enable_debug`/`-Og`).
-
-For a quick local check, add the `gemdir:` line above to a
-[picoruby](https://github.com/picoruby/picoruby) checkout's
-`build_config/default.rb`, then:
+This repo is a standalone mrbgem, not a full mruby/picoruby checkout. Point
+`MRDEBUG_MRUBY_DIR` at a checkout of [mruby](https://github.com/mruby/mruby)
+(4.0.0+) and use this repo's own `Rakefile`:
 
 ```sh
-cd /path/to/picoruby
-rake
-build/host/bin/picoruby /path/to/script.rb
+MRDEBUG_MRUBY_DIR=/path/to/mruby rake build       # build/host/bin/mruby
+MRDEBUG_MRUBY_DIR=/path/to/mruby rake test:unit   # mrbtest
 ```
+
+Both drive mruby's own `Rakefile` with `MRUBY_CONFIG=e2e/build_config.rb`
+and `MRUBY_BUILD_DIR=<this repo>/build`, so nothing lands inside the mruby
+checkout itself. `e2e/build_config.rb` turns on `conf.enable_debug` (`mrbc
+-g`): without it, AOT-compiled `test/**/*.rb` has no line info, and the VM hook
+can never be observed firing from a `test/e2e/*.rb` assertion (`if (line <
+0) return;` in `src/hook.c` bails immediately) — a plain `bin/mruby
+script.rb` run doesn't need this, since it compiles at runtime and always
+emits debug info.
+
+For a quick manual smoke check without `rake test:unit`, pipe commands into
+a script that sets up a session:
+
+```ruby
+MRDebug.session = MRDebug::Session.new
+MRDebug.session.ui = MRDebug::UI::LocalConsole.new
+binding.debugger
+```
+
+```sh
+printf 'n\np x\nc\n' | build/host/bin/mruby script.rb
+```
+
+### Two test layers, one runner
+
+- `test/**/*.rb` (outside `test/e2e/`) — plain `assert`, pure-Ruby logic, no
+  VM hook involved. Mirrors the source tree being tested:
+  `test/mrblib/mrdebug/*.rb` for `mrblib/mrdebug/*.rb`,
+  `test/tools/mrdebug/**/*.rb` for `tools/mrdebug/**/*.rb`. `Session`'s
+  `:next`-mode depth comparison is checked by stubbing
+  `MRDebug::Hook.frame_count` (`Hook.define_singleton_method(:frame_count)
+  { ... }`) rather than relying on a real paused context. **Restore a
+  stubbed `Hook` method via `alias_method`, not `remove_method`**:
+  `remove_method` on a singleton method that shadowed a C-defined one
+  deletes it outright instead of un-shadowing it (`test/mrblib/mrdebug/session.rb`'s
+  `frame_count`/`armed=` stubs both alias the original aside first, then
+  alias it back in the `ensure`) — confirmed by a real crash this mistake
+  caused once a later test's real `next_mode!` call found `frame_count`
+  gone entirely.
+- `test/e2e/*.rb` — also plain `assert`, but exercises the real VM hook,
+  `binding.debugger`, and the command layer together (ported from what used
+  to be ad hoc `e2e/scenarios/*.rb` scripts checked by eye; that approach
+  once let a real bug — a wrong callback arity — go unnoticed for several
+  steps, which is why this layer is now `assert`-based too).
+
+**Every test that creates a `Session` must clean up the VM hook.** `Session#initialize`
+calls `MRDebug::Hook.install(self)`, and adding a breakpoint or leaving
+step/next mode set also arms it (`MRDebug::Hook.armed = true`). Without an
+`ensure MRDebug::Hook.uninstall end` in every `assert` block, an armed hook
+leaks into whatever mrbtest runs next — including mruby's own core test
+suite, sharing the same process — and can silently self-trace mrdebug's own
+library code (see `Session::DIRECT_STOP_FRAME_OFFSET` below) or just slow
+everything down.
+
+**Avoid `mruby-string-ext` methods (`String#strip`, `#end_with?`,
+`#start_with?`, ...) in code that also runs under `mrbtest`.** They come up
+as `NoMethodError` specifically when called from this gem's own
+`test/**/*.rb` (not from a plain `bin/mruby script.rb` run) —
+confirmed via a clean rebuild, not a caching artifact, and not fixed by
+declaring `mruby-test` as a build-time gem dependency up front. The likely
+cause is a presym (symbol-ID) mismatch between `mrbc` and the `mruby-test`
+gem's late, dynamic addition to the build (`tasks/test.rake`'s
+`build.gem(core: 'mruby-test')`, which runs after the "host" build's own
+symbols are already resolved) — not root-caused further, since it isn't
+worth the time relative to the fix: **mruby *core* `src/string.c`/`src/array.c`
+ROM-table methods are unaffected** (`to_i`, `empty?`, `rindex`, `include?`,
+`[]`, `size` all confirmed fine) — only the separate `mruby-string-ext` gem's
+table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
+`mrblib/mrdebug/command.rb`'s argument trimming both hand-roll what
+`#end_with?`/`#strip` would otherwise do, for this reason.
 
 ## Architecture
 
-- **`mrbgem.rake`**: sets `MRB_USE_DEBUG_HOOK` (only on mruby) — this is what
-  compiles mruby's `code_fetch_hook` into the VM. `conf.enable_debug` does
-  *not* set this; it only defines `MRB_DEBUG`. Because the define changes
-  `mrb_state`'s layout and the hook fires from `vm.c` core, it must stay
-  build-wide and self-contained in this gem's rake file, not something
-  callers opt into separately.
-- **`include/`**: shared headers, one per `src/mruby/*.c` file
-  (`breakpoint.h`, `line_breakpoint.h`, `watch_breakpoint.h`, `debugger.h`,
-  `debug.h`). Each `src/mruby/*.c` file is an independent translation unit
-  (see below), so any function it exposes to another file must be declared
-  here and given external linkage (no more `static`) — this is what makes
-  the split possible without one file `#include`-ing another's `.c`.
-  `debug.h`/`debugger.h` are deliberately thin: each declares only the
-  handful of functions its file implements for the *other* side to call
-  (see `debug.c`/`debugger.c` below) — neither struct's internal layout
-  (`picoruby_debugger` in `debugger.c`, the hook-tracking globals in
-  `debug.c`) is shared at all, so each file's internal state stays fully
-  private to it.
-- **`src/*.c`** (`debug.c`, `breakpoint.c`, `line_breakpoint.c`,
-  `watch_breakpoint.c`, `debugger.c`): VM dispatch shims, one per class.
-  `mrbgem.rake`'s default file globbing only picks up `src/*.c`
-  (non-recursive; confirmed in `lib/mruby/gem.rb`'s `srcs_to_objs`), so each
-  of these top-level files is auto-detected as its own translation unit and
-  `#include`s the real implementation from `mruby/<name>.c` (guarded by
-  `#if defined(PICORB_VM_MRUBY)`; this gem is mruby-only, so there's no
-  `mrubyc/<name>.c` counterpart for these four — only `debug.c` needs the
-  `#elif defined(PICORB_VM_MRUBYC)` branch, since `mrbc_debug_init` in
-  `src/mrubyc/debug.c` is the actual entry point the mrubyc gem loader
-  calls). This mirrors `picoruby-littlefs`'s `src/littlefs.c` /
-  `littlefs_file.c` / `littlefs_dir.c` pattern, just with more files.
-- **`src/mruby/breakpoint.c`**: the `Breakpoint` base class. Its C struct
-  (`debug_breakpoint`, just an `active` flag, declared in
-  `include/breakpoint.h`) is embedded as the **first member** of
-  `LineBreakpoint`/`WatchBreakpoint`'s own structs (C99 6.7.2.1 guarantees a
-  struct pointer and a pointer to its first member are interconvertible —
-  the same idiom as BSD's `sockaddr`/`sockaddr_in`), so
-  `debug_breakpoint_active_p`/`debug_breakpoint_deactivate` (extern,
-  declared in `include/breakpoint.h`) work on either subclass without
-  per-subclass dispatch, and `debugger.c`'s `remove_*`/`clear_*` methods
-  reuse them directly instead of duplicating deactivate logic.
-  `MRB_SET_INSTANCE_TT(breakpoint, MRB_TT_CDATA)` is set only here;
-  `mrb_class_new` copies `MRB_INSTANCE_TT(super)` into subclasses, so
-  `LineBreakpoint`/`WatchBreakpoint` inherit CDATA automatically.
-- **`src/mruby/line_breakpoint.c`**: `LineBreakpoint` (file/line fields,
-  suffix-based `debug_file_match`, both private to this file).
-  `debug_line_breakpoint_new`/`debug_line_breakpoint_file_matches`/
-  `debug_line_breakpoint_stops_at` are extern (declared in
-  `include/line_breakpoint.h`) for `debug.c`'s hot path and `debugger.c`'s
-  `add_breakpoint`. Also exposes `break?(file, line)` to Ruby as a
-  documented predicate for the same match rule the hot path uses
-  internally.
-- **`src/mruby/watch_breakpoint.c`**: `WatchBreakpoint` (expr field). The
-  "last evaluated value" cache is **not** in this C struct — it's plain
-  Ruby ivars on the instance (`WatchBreakpoint#break?`, in
-  `mrblib/watch_breakpoint.rb`), since mruby's GC marks ivars on
-  `MRB_TT_CDATA` objects the same as any other object, so no custom
-  mark/free handling is needed for values that can be arbitrary Ruby
-  objects.
-- **`src/mruby/debug.c`** and **`src/mruby/debugger.c`** split the VM-hook
-  mechanism from the Debugger class's own data along a clean ownership
-  line, not just a historical one: **`debugger.c` owns the `Debugger`
-  instance's actual data (breakpoints, watches, mode, quit flag);
-  `debug.c` owns the VM hook mechanism (installing `code_fetch_hook`,
-  swapping `mrb->c`, deciding which instruction to act on) and never
-  touches that data directly, only through the query/mutator functions
-  `debugger.c` exposes via `include/debugger.h`.**
-  - **`src/mruby/debugger.c`**: the `Debugger` class's C methods
-    (`add_breakpoint`, `add_watch`, `set_step_mode`, `request_quit`, etc.)
-    and `mrb_picoruby_debug_debugger_init`, which defines the class and
-    registers them. Owns the private `picoruby_debugger` struct
-    (`breakpoints`/`watches` — `mrb_realloc`'d C arrays of `mrb_value`,
-    each entry a GC-registered (`mrb_gc_register`) `LineBreakpoint`/
-    `WatchBreakpoint` instance, since the array itself is plain C memory
-    the GC doesn't scan — plus `mode`, `next_ci`, `quit_requested`), which
-    **no other file can see**: this struct's type, `debugger_state`
-    (the lazy-init accessor), `picoruby_debugger_free`, and the
-    `debug_mode` enum are all `static`/file-local. Everything `debug.c`'s
-    hot path needs from this state is exposed instead as small extern
-    query functions declared in `include/debugger.h`
-    (`mrb_debugger_watching_p`, `mrb_debugger_mode_run_p`,
-    `mrb_debugger_has_breakpoints_p`, `mrb_debugger_file_relevant_p`,
-    `mrb_debugger_should_break_p`, `mrb_debugger_quit_requested_p`,
-    `mrb_debugger_update_next_ci`, `mrb_debugger_reset_mode`) — each reads
-    fields straight through `DATA_PTR` (no per-call type check) via the
-    extern helpers from `breakpoint.c`/`line_breakpoint.c`, so this is a
-    plain C function call from `debug.c`, not a `mrb_funcall`, and costs
-    about the same as the old direct-field-access design.
-    `mrb_gc_unregister` only runs in two places: `picoruby_debugger_free`
-    (Debugger teardown) and `clear_breakpoints`/`clear_watches` — unlike
-    `remove_breakpoint`/`remove_watch` (single delete: deactivate in
-    place, never freed until teardown), a bare `delete`/`unwatch` frees
-    everything immediately and resets the count to 0, so the next add
-    renumbers from #1 — this is pre-existing behavior the class-split
-    refactor preserves, and forgetting the immediate `gc_unregister`
-    there would leak/desync it. `enable_hook`/`disable_hook` are the two
-    Debugger methods whose *bodies* live in `debug.c` instead (see below)
-    — this file just registers them by name via the `include/debug.h`
-    declarations, since their job is installing/removing the VM hook
-    itself, not touching `picoruby_debugger`.
-  - **`src/mruby/debug.c`**: VM hook mechanics only. No knowledge of
-    `picoruby_debugger`'s layout at all — everywhere the old code read a
-    struct field directly, it now calls one of the `include/debugger.h`
-    functions above, passing the currently-active Debugger instance as a
-    plain `mrb_value`. That instance is tracked via this file's own
-    globals (`active_debugger_self`/`active_debugger_p`), not stored
-    inside the Debugger's struct — there's only ever one active Debugger
-    (owning the hook) at a time, so a global is simpler than threading an
-    instance reference through per-instance state. The same reasoning
-    applies to `in_break` (re-entrancy guard), `prev_line`/`prev_irep`
-    (same-line dedup), and `debugger_self_registered` (GC-registration
-    bookkeeping): none of these are ever read or written by Ruby-facing
-    Debugger methods, so they're plain `static` globals here rather than
-    struct fields. `debug_code_fetch_hook` — the actual
-    `mrb->code_fetch_hook` callback — reads the globals above, then asks
-    `debugger.c`'s query functions whether to act; `debug_invoke_on_break`
-    does the same for `quit_requested`/`next_ci` after the `on_break`
-    funcall returns. `mrb_debugger_enable_hook`/`disable_hook` (declared
-    in `include/debug.h`, registered on the Debugger class by
-    `debugger.c`) also live here since installing/removing the hook and
-    setting `active_debugger_self`/`_p` are exactly this file's
-    responsibility. Key mechanics, in case of changes:
-  - **Context switch around callbacks**: `debug_invoke_on_break` must swap
-    `mrb->c` to `mrb->c->prev` before `mrb_funcall_id`-ing into
-    `Debugger#on_break`, because the enclosing `mrb_vm_exec` (for the
-    debugged task) caches `ci`/`regs` in locals that a stack-growing funcall
-    on the *same* context would leave dangling. The hook also self-disables
-    (`mrb->code_fetch_hook = NULL`) during the callback to avoid recursing.
-  - **Quit** is deferred: `request_quit` (in `debugger.c`) just sets a
-    flag; the actual `mrb->c->status = MRB_TASK_STOPPED` happens back in
-    `debug_invoke_on_break` (via `mrb_debugger_quit_requested_p`) after
-    `mrb->c` is restored to the debugged task's own context.
-  - **Modes** (`DBG_MODE_RUN` / `STEP` / `NEXT`, private to `debugger.c`)
-    are checked inside `mrb_debugger_should_break_p`. RUN has a fast path
-    (`mrb_debugger_file_relevant_p`) that skips ireps outside any
-    breakpoint's file so diving into library calls (e.g. `puts`) doesn't
-    reprocess every line.
-  - **Watchpoints** (`watch`/`unwatch`) add a second, independent reason for
-    the hook to fire: `mrb_debugger_watching_p` forces the hook to give up
-    the RUN-mode fast path and visit every line, in every file, while any
-    watch is active — a watched expression can change from anywhere. The
-    hook still computes `mrb_debugger_should_break_p` (breakpoints/STEP/
-    NEXT) as before and passes it to `debug_invoke_on_break` as
-    `real_stop`; when a line is visited only because of an active watch
-    (`real_stop == 0`), Ruby's `on_break` evaluates the watch expressions
-    and silently returns if none changed, so the extra visits are
-    invisible unless a watch actually fires. Because watch-forced visits
-    can happen from a deeper frame than a `next` was issued from,
-    `mrb_debugger_update_next_ci` only refreshes `next_ci` when
-    `real_stop` is true — otherwise a watch-only visit deep in a call
-    would corrupt NEXT's frame-depth tracking and cause spurious stops
-    inside called methods.
-  - **Bindings for `print`**: `debug_make_binding` builds a `Binding` from
-    the paused frame's `ci`/`env` (mirroring `Kernel#binding`); nil for a C
-    frame. All console output is on the Ruby side — this file has no
-    HAL/stdio dependency.
-  - `mrb_binding_debugger` (the `binding.debugger`/`b`/`break` entry point)
-    also lives here, along with `mrb_picoruby_debug_gem_init`/`_gem_final`
-    — the gem's actual init/final entry points, which call the four
-    `mrb_picoruby_debug_*_init` functions (breakpoint, line_breakpoint,
-    watch_breakpoint, debugger) in dependency order before registering
-    `Binding#debugger`/`#b`/`#break`.
-- **`mrblib/debugger.rb`**: the `Debugger` class — the interactive `(prdb)`
-  prompt loop (`on_break`), the command dispatch bodies, and `list_entries`
-  (the shared 1-based/stable listing loop used by both `list_breakpoints`
-  and `list_watches`). C methods it calls (`add_breakpoint`, `set_step_mode`,
-  `request_quit`, etc.) are defined in `src/mruby/debugger.c`.
-  - **Frame control** (`frame`/`f`, `up`/`u`, `down`): `on_break` builds a fresh `Frame` (`mrblib/frame.rb`) each stop; `p`/`print`/`list` read its `binding`/`position` instead of always using the innermost `bnd`/`file`/`line`, while `display`/`watch` stay innermost-only like CRuby's `debug` gem.
-- **`mrblib/breakpoint.rb`/`line_breakpoint.rb`/`watch_breakpoint.rb`**: the
-  Ruby-side half of the three CDATA classes above — mostly `to_s`/
-  `numbered_line` formatting, plus `WatchBreakpoint#break?`/
-  `#add_initial_value` (the value-cache/change-detection logic that used to
-  live in `Debugger#check_watches`/`@watch_cache`).
-- **`mrblib/display.rb`**: `Display` — one display expression (`expr` +
-  `active` flag + `print_line`). Pure Ruby, no C counterpart: unlike
-  breakpoints/watches, `display`/`undisplay` need no VM mechanic — they just
-  re-evaluate and print at whatever timing `on_break` already runs at.
-  `Debugger#@displays` is an `Array<Display>`.
-- **`mrblib/frame.rb`**: `Frame` — the selected stack frame for one `on_break` stop (`frame`/`up`/`down`'s state), wrapping `frame_count`/`frame_position(depth)`/`frame_binding(depth)` (the same C API `mrblib/dap_session.rb` calls directly) and papering over `binding.debugger`'s own wrapper C frame via an `offset` passed in at construction. Pure Ruby, no C counterpart. `Debugger#@frame` is replaced wholesale each stop, not reset in place.
-- Breakpoint file matching is **suffix-based** (`debug_file_match`) and
-  numbering is **stable**: `remove_breakpoint`/`delete_breakpoint` deactivate
-  in place rather than compacting the array, so existing breakpoint numbers
-  never shift. The same stable-numbering convention is used for watchpoints
-  and display expressions.
-- **`mrblib/dap_transport.rb`**: `DapTransport` — DAP wire-format framing
-  (`Content-Length: <n>\r\n\r\n<json>`) and TCP I/O only, no DAP semantics.
-  Pure Ruby, no C counterpart — same reasoning as `display.rb`, this is
-  transport plumbing, not a VM mechanic. `picoruby-socket` is a soft
-  dependency (`DapTransport.available?`, `Object.const_defined?`-style
-  like `picoruby-bdffont`'s optional font gems), unlike `picoruby-json`
-  (hard dependency, needed unconditionally to parse/generate the JSON
-  payload).
-- **`mrblib/dap_session.rb`**: `DapSession` — the DAP request/response layer
-  on top of `DapTransport`, a second front end over the same core
-  `Debugger` operations `dispatch_command` uses (mirrors ruby/debug's "REPL
-  and DAP are separate front ends over one internal session API"). See
-  README's "DAP support" section for the request list and enabling it.
-  Two methods matter for how it's wired into `Debugger#on_break`
-  (`mrblib/debugger.rb`):
-  - `perform_handshake(debugger)`: blocks on `DapTransport#listen` and
-    processes `initialize`/`attach`/`launch`/`setBreakpoints` until
-    `configurationDone`, then returns `true`. Memoized (`@handshake_done`)
-    so it's a no-op on every stop after the first. `on_break` calls this
-    *before* reporting anything, since this debugger only starts watching
-    for breakpoints from the first `binding.debugger` call onward — that
-    call's own `on_break` is the one place "the script hasn't run yet" and
-    "we can still talk to a client" overlap. If the handshake never
-    completes (dropped connection), `on_break` sets `@dap_session = nil`
-    and falls through to the normal CLI prompt for the rest of the script.
-  - `run_request_loop(debugger)`: sends a `stopped` event, then processes
-    requests (`stackTrace`/`scopes`/`variables`/`evaluate`/`setBreakpoints`/
-    `threads` don't return; `continue`/`next`/`stepIn`/`stepOut`/
-    `disconnect` do, after calling the matching `Debugger` mode setter) until
-    one resumes execution or the client disconnects. Every request is
-    dispatched inside a `rescue` that turns an unexpected error into a
-    `success: false` response instead of letting it escape into
-    `debug_invoke_on_break`'s `mrb_protect_error`, which would otherwise
-    swallow it silently and leave the client hanging with no response at
-    all.
-  - `variables`'s handler filters out empty-named entries from
-    `Binding#local_variables`: at least one PicoRuby/Prism-compiler-internal
-    local slot surfaces there with a name (not caught by
-    `mrb_proc_local_variables`'s own `'*'`/`'&'`-prefix filter), and
-    `local_variable_get` raises `NameError` for it.
-  - `stepOut` needs `DBG_MODE_STEP_OUT` (`src/mruby/debugger.c`), added
-    alongside the existing RUN/STEP/NEXT modes: NEXT's stop condition is
-    `next_ci >= current_ci` (same-or-shallower frame), which already covers
-    "step over"; `stepOut` needs the *strict* `next_ci > current_ci`
-    (only a shallower frame) so it doesn't also stop back in the same
-    frame it's leaving. `mrb_debugger_update_next_ci`'s NEXT-only snapshot
-    condition was extended to include `DBG_MODE_STEP_OUT` too.
-  - A `Debugger` instance is created once, by the first `binding.debugger`
-    call (see `mrb_binding_debugger` in `src/mruby/debug.c`) — there's no
-    instance to call an enabling method on any earlier than that, hence
-    `Debugger.listen_dap`/`.dap_port` being class-level rather than normal
-    instance methods, read back in `Debugger#initialize`.
-  - `send_response`/`send_event` build the JSON body as Hash literals passed
-    as a real second positional argument (`send_response(req, { key: val })`,
-    not `send_response(req, key: val)`): `send_response` has real keyword
-    parameters (`success:`/`message:`), so a bare trailing `key: val` in a
-    call is parsed as (mismatched, `ArgumentError`-raising) keywords for
-    *that* call, not an implicit Hash for the preceding positional `body`
-    param.
-
-## Dependencies
-
-- `picoruby-sandbox`
-- `picoruby-editor` (the `(prdb)` prompt's line editor, `Editor::Line`) and
-  `picoruby-io-console` (the raw-mode/non-blocking reads it's built on) —
-  same stack `picoruby-shell` uses, so typed characters echo immediately
-  even on platforms with no OS-level tty echo (e.g. ESP32). On POSIX,
-  `on_break` also brackets the prompt loop in `STDIN.raw!`/`STDIN.cooked!`
-  (unlike `picoruby-shell`'s `r2p2` binary, which forces raw mode once for
-  the whole process at C-level startup — see `init_posix()` in
-  `picoruby-bin-r2p2/tools/r2p2/r2p2.c` — plain `build/host/bin/picoruby`
-  does not, so without this the terminal reverts to cooked/echoing mode
-  between `Editor::Line`'s polls and every character gets echoed twice).
-- `picoruby-machine` (for `picorb_hal_write`, stdio-free console output)
-- `picoruby-json` (`DapTransport`'s message parsing/generation)
-- mruby only: `mruby-binding`, `mruby-eval`
-- `picoruby-socket` (optional, soft dependency — `DapTransport` only)
+- **`mrbgem.rake`**: declares the gem `mrdebug` and sets
+  `MRB_USE_DEBUG_HOOK` (build-wide — see below). Depends only on mruby core
+  gems (`mruby-binding`, `mruby-eval`); `mruby-io`, `mruby-socket`,
+  `mruby-env` (the last only for `MRDEBUG_PORT`/`MRDEBUG_SOCK` in
+  `MRDebug.autostart`), and `tools/mrdebug/**/*.rb` (the `(prdb)` prompt)
+  are added only under `spec.build.host?`, so a firmware build never sees
+  the console UI's I/O dependency at all — the core (`MRDebug`, `Session`,
+  `Command`, the VM hook) has none. `spec.rbfiles +=` (rather than
+  replacing `spec.rbfiles`) is what makes this additive-and-safe: confirmed
+  via `MRuby::Gem::Specification#setup` giving `@rbfiles` its default value
+  from `mrblib/**/*.rb` *before* `instance_eval(&@initializer)` runs this
+  file's block (`lib/mruby/gem.rb` in the mruby checkout). Each of these
+  dependencies is declared via `core:` on mainline mruby, or
+  `gemdir:` pointing straight at PicoRuby's vendored copy
+  (`mrbgems/picoruby-mruby/lib/mruby/mrbgems/<name>`) when
+  `spec.build.respond_to?(:picoruby?) && spec.build.picoruby?` — `core:`
+  always resolves under `MRUBY_ROOT/mrbgems`, which is where mainline
+  keeps these gems but not where PicoRuby vendors them, and
+  `build.picoruby?` only exists on PicoRuby's own `MRuby::Build` subclass,
+  hence the `respond_to?` guard. This is the same pattern PicoRuby's own
+  `stdlib.gembox` already uses for `mruby-binding`/`mruby-eval`, not
+  something invented here. See
+  `docs/phase3-picoruby-host-verification.md`.
+- **`src/hook.c`** — the VM hook. `struct mrdebug_hook hook` (file-static)
+  holds everything: the installed session, whether the hook is armed,
+  same-line dedup state (`prev_irep`/`prev_line`), the dedicated debugger
+  context, and a frozen-string cache for filenames (keyed by `(irep, char*)`
+  identity, since `mrb_debug_get_filename` returns an interned symbol's
+  name — stable while the irep lives).
+  - **The dedicated context** (`dbg_context_new`/`dbg_context_reset`,
+    modeled on `mruby-fiber`'s `init_fiber`) exists because `mrb_vm_exec`
+    keeps a local `mrb_callinfo *ci` pointing into `mrb->c->cibase`; a
+    funcall from the hook that grows the *same* context's `cibase` (e.g. a
+    deep `Session#on_line` call chain) would leave that local dangling.
+    Every callback — hook-triggered or direct — swaps `mrb->c` to this
+    context first. `mrb->c->prev` is `NULL` on the root context in plain
+    mruby (unlike the old PicoRuby-oriented design, which assumed a
+    non-root `prev` to borrow), which is exactly why this gem needs its own
+    context rather than reusing one. `dbg_context_reset`'s one field write to
+    `c->svars` is wrapped in `#ifndef MRDEBUG_NO_SVARS` — PicoRuby's vendored
+    mruby fork's `struct mrb_context` has no `svars` field at all (mainline
+    mruby added it later, for Fiber-scoped special variables), and
+    `mrbgem.rake` only defines `MRDEBUG_NO_SVARS` when
+    `build.picoruby?`, so mainline mruby's behavior here is unchanged (see
+    `docs/phase3-picoruby-host-verification.md`).
+  - **`invoke_on_line`** is the shared swap-call-restore sequence, used by
+    both `hook_code_fetch` (bnd = nil) and `MRDebug::Hook.enter` (bnd =
+    the caller's `Binding`, for the direct `binding.debugger` path — see
+    `Session::DIRECT_STOP_FRAME_OFFSET` below for why that path still
+    needed its own entry point rather than just calling `session.on_line`
+    directly). `hook.in_callback` guards re-entrancy; `MRDebug::Hook.armed=`
+    only touches `mrb->code_fetch_hook` directly when *not* `in_callback` —
+    if `#on_line` arms/disarms mid-callback (e.g. `step_mode!`),
+    `invoke_on_line`'s own tail re-derives `mrb->code_fetch_hook` from
+    `hook.armed` on the way out instead.
+  - **`MRDebug::Hook.armed=` toggles `mrb->code_fetch_hook` itself**
+    (`NULL` vs the hook function), not a flag checked *inside* the hook —
+    so a disarmed hook costs nothing beyond the VM's own existing
+    `if (mrb->code_fetch_hook)` check (`CODE_FETCH_HOOK` macro in mruby's
+    `src/vm.c`), the same as no debugger being loaded at all. Only
+    `hook.armed` still exists as a flag: it's what `invoke_on_line`
+    consults when deciding whether to *re-arm* on the way out.
+  - **`mrdebug_paused_ctx(mrb)`** (declared in `src/mrdebug.h`, called from
+    `src/frame.c`) returns `hook.paused` if set, else `mrb->c` — the
+    fallback matters for `MRDebug::Hook.enter`'s direct-call path, where no
+    hook callback (and thus no `hook.paused`) is involved, but `mrb->c` at
+    that point genuinely *is* the debuggee's live context.
+- **`src/frame.c`** — walks whatever `mrdebug_paused_ctx` returns.
+  `frame_count`/`frame_at` are plain `ci - cibase` arithmetic (depth 0 =
+  innermost); `frame_position` reads `ci->pc` directly for the innermost
+  frame but steps back one instruction for any other (a resumed call site's
+  `pc` is just past the call); `frame_binding` builds a `Binding` the same
+  way `Kernel#binding` does, lazily creating the frame's `REnv` if it
+  doesn't have one yet.
+- **`src/mrdebug.h`** — the only header, declaring exactly the two things
+  `hook.c` and `frame.c` share (`mrdebug_paused_ctx`, `mrdebug_frame_init`).
+  Not placed under `include/`, which mruby's gem convention reserves for
+  cross-gem sharing.
+- **`mrblib/mrdebug.rb`** — `module MRDebug`: `.session`/`.session=` (the
+  latter also calls `Hook.install`, so assigning *any* session — a real
+  `Session` or a lightweight test double implementing `#on_line` — makes it
+  the hook's active session too) and `.break(bnd)`, `Binding#debugger`'s
+  entry point. `.break` calls `.autostart` when `@session` is still `nil`,
+  then bails unless one got set — a no-op `.autostart` here (overridden on
+  host builds by `tools/mrdebug/device.rb`) is what keeps a firmware build,
+  or any build that never wired a UI, silently doing nothing rather than
+  funcalling `on_line` on `nil`.
+- **`mrblib/binding.rb`** — reopens core `Binding` to add
+  `#debugger`/`#b`/`#break`, all delegating to `MRDebug.break(self)`.
+  `Binding#source_location` (from mruby's own `mruby-binding` gem) is
+  already exact here, resolved from the live call stack at the point
+  `binding` was called — no VM hook involvement needed for file/line at
+  this entry point, unlike a breakpoint hit.
+- **`mrblib/mrdebug/session.rb`** — `MRDebug::Session`: owns breakpoints and
+  run/step/next mode, decides stop/no-stop in `#on_line`, and (since the UI
+  wiring landed) calls `ui.on_stop(self)` synchronously if a UI is attached,
+  *inside* `#on_line` — matching the "prompt loop runs inside the hook
+  callback's own stack frame" design the old repo used too.
+  - **`#stop_reason_for`** (the private predicate `#on_line` uses; was
+    `#should_break?`) returns *why* to stop, not a bool: the matched
+    `LineBreakpoint` or `WatchVarBreakpoint` object, `:step`, `:next`, or
+    `nil` to keep going. `#on_line` stores it in `@stopped_by` (also
+    `:debugger` for a direct `binding.debugger` stop), and **`#stop_banner`**
+    turns that into the headline the UI prints. It finds which list
+    (`@breakpoints` / `@watches`) holds `@stopped_by` and hands that list to
+    `LineBreakpoint#stop_banner` / `WatchVarBreakpoint#stop_banner`, which
+    locate their own number in it (`siblings.index(self) + 1`) and own their
+    "Breakpoint N: …" / "Watchpoint N: …" wording — no per-class branch in
+    `Session`. A step/next/debugger stop is in neither list, so it falls
+    back to a plain `"Stop: file:line"`.
+  - **`Session::DIRECT_STOP_FRAME_OFFSET = 3`**: `Binding#debugger` →
+    `MRDebug.break` → `MRDebug::Hook.enter` is a fixed 3-frame call chain
+    that `Hook.enter`'s `invoke_on_line` captures `mrb->c` through *before*
+    swapping into the debugger context — so a direct stop's
+    `Hook.frame_count` always includes exactly these 3 extra frames on top
+    of the debuggee's own depth at the call site, confirmed empirically
+    across nesting depths, all three `Binding` aliases, and repeated direct
+    stops in one session. `next_mode!` subtracts it when `@direct_stop` is
+    set, rather than falling back to `step_mode!` as an earlier version of
+    this file did.
+  - `on_line`'s 3rd parameter (`bnd`) distinguishes a direct stop (always
+    present, and *always* stops unconditionally) from a hook-triggered one
+    (`nil`; `MRDebug::Hook.frame_binding(0)` is used to build the binding
+    lazily instead). The VM hook's own funcall always passes exactly 3 args
+    (`nil` for `bnd` when hook-triggered) — a test double's `#on_line` needs
+    a matching arity (`def on_line(file, line, bnd = nil)`), or the VM hook
+    silently swallows the resulting `ArgumentError` via `mrb_protect_error`
+    (`src/hook.c`) and nothing appears to happen at all. This exact mistake
+    shipped undetected in the old `e2e/scenarios/hook_trace.rb` for several
+    steps, since nothing but eyeballing `puts` output checked it.
+- **`mrblib/mrdebug/line_breakpoint.rb`** — file/line/active, suffix match
+  via hand-rolled `String#[]` slicing (see "Avoid `mruby-string-ext`
+  methods" above), stable numbering shared with `Session`'s breakpoint
+  array (`delete` deactivates in place rather than compacting).
+  `#stop_banner(siblings, location)` returns the `"Breakpoint N: …"` headline,
+  N being its own index in `siblings` + 1.
+- **`mrblib/mrdebug/watch_var_breakpoint.rb`** — `MRDebug::WatchVarBreakpoint`
+  (named after `LineBreakpoint`; was `WatchExpression`): a watched expression
+  string, its last evaluated value, `#changed?(bnd)`, and `#stop_banner`
+  returning `"Watchpoint N: …"` (the label the user sees is still
+  "Watchpoint").
+- **`mrblib/mrdebug/own_source.rb`** — `MRDebug::OwnSource`: the hardcoded
+  suffix-matched file list `Session#stop_reason_for` checks first, to never
+  stop (or count against `step N`/`watch`) inside this gem's own code. See
+  "Known gaps" below.
+- **`mrblib/mrdebug/command.rb`** — `MRDebug::Command.dispatch(session,
+  line)` parses one command line and returns `[output_lines, :stay |
+  :resume]`; it never prints. This is what keeps the command layer testable
+  without stdio and reusable across front ends (today just
+  `LocalConsole`, but the split is exactly the "coreoutputs data, UI prints
+  it" boundary `docs/plan-phase1.md` calls for).
+  - **`list`/`l`** is the one command whose *body* needs I/O (reading the
+    stopped file's source text) despite living in this I/O-free core file.
+    Rather than splitting a "source reader" out to `tools/mrdebug/` and
+    injecting it into `Session`/`Command` (the `Transport` pattern), it
+    stays in `Command.source_listing` and just checks `defined?(File)`
+    first: on a host build `File` is always present (`mrbgem.rake` adds
+    `mruby-io` under `spec.build.host?`, and `spec.rbfiles +=` never
+    removes core), so this is the common case; a firmware build that never
+    linked `mruby-io` in gets a one-line "not available" message instead of
+    a `NameError`. This was chosen over dependency injection because
+    `list`'s only device-specific need is *reading bytes off a path
+    already known to Ruby* (`session.file`) — unlike `Transport`, there's
+    no protocol or session-lifetime state to own, so a DI seam would add a
+    layer without a matching axis of variation to justify it. `File.read`
+    (not `File.readlines`, which mruby-io's `File` doesn't define) plus a
+    hand-rolled `"\n"`-split (`String#split` is core; `#each_line`/`#lines`
+    are `mruby-string-ext`, unsafe under `mrbtest` per above) turns the
+    file into a 1-indexed line array; `LIST_CONTEXT` (5) lines on either
+    side of the target are then clamped to `1..line_count` and formatted
+    with a `"  "`/`"=>"` marker prefix for the current line (see README).
+- **`mrblib/mrdebug/ui.rb`** — `MRDebug::UI::Base`, the one-method contract
+  (`#on_stop(session)`) a UI implements.
+- **`mrblib/mrdebug/transport.rb`** (Phase3) — `MRDebug::Transport::Base`:
+  the `(prdb)` prompt's I/O contract (`#gets`/`#write`), not a wire protocol
+  (DAP, rdbg, ...) — see `docs/plan-phase3.md`.
+- **`mrblib/mrdebug/transport/loopback.rb`** (Phase3) —
+  `MRDebug::Transport::Loopback`: an in-process, array-backed transport with
+  no I/O, used to test `LocalConsole` under `rake test:unit` without stdio.
+- **`tools/mrdebug/transport/stdio.rb`** (host builds only, Phase3) —
+  `MRDebug::Transport::Stdio`: `STDIN`/`STDOUT` via `mruby-io`. Strips a
+  trailing newline by hand (`strip_eol`, now shared on `Transport::Base`),
+  not `String#chomp` — that's `mruby-string-ext`, which misbehaves under
+  `mrbtest`.
+- **`tools/mrdebug/transport/socket.rb`** (host builds only) —
+  `MRDebug::Transport::Socket`/`TCP`/`Unix`: `mruby-socket`, wrapping the
+  accepted (`.listen`, device side) or connected (`.connect`, CLI side)
+  socket. `#gets` uses `#sysread`, not mruby-io's buffered `IO#gets` —
+  the latter makes `#write` raise `Errno::ESPIPE` (silently swallowed by
+  the VM hook, freezing the `(prdb)` loop) once a read has more than one
+  line buffered ahead, since `IO#write` on a dual-purpose fd tries to
+  `lseek` back by the leftover count first.
+- **`tools/mrdebug/device.rb`** (host builds only) — `MRDebug.listen_tcp`/
+  `.listen_unix`: device-side setup — `Session.new`, block for the CLI to
+  connect, wire the connection to `LocalConsole`. Also `MRDebug.autostart`
+  (overriding the core no-op), which `MRDebug.break` calls on the first
+  `binding.debugger` hit when no session exists — a three-way branch on the
+  environment: `MRDEBUG_SOCK` → `listen_unix`; else `MRDEBUG_PORT` →
+  `listen_tcp` on it; else `attach_stdio` (a `Session` whose `LocalConsole`
+  talks to this process's own `STDIN`/`STDOUT` — no socket, no separate
+  `mrdebug` CLI, the common local case and what makes README's Usage
+  example work with zero setup). This is what lets a script carry nothing
+  but `binding.debugger`. It's a one-shot by construction (`@session.nil?`
+  gates it); a listener bind failure propagates out of `binding.debugger`
+  rather than being swallowed. `DEFAULT_PORT` (4711, rdbg's convention) is
+  only the fallback for a *port that was asked for but unspecified* — a
+  bare `MRDebug.listen_tcp`, or `mrdebug` with no args — not for
+  `autostart`, which goes to stdio when `MRDEBUG_PORT` is unset.
+  `env_value` tolerates a build without `mruby-env` (`defined?(ENV)`) and
+  treats a blank value as unset.
+- **`tools/mrdebug/cli/cli.rb`**'s `--port`/`--sock-path` (and no args at
+  all, which reads `MRDEBUG_SOCK`/`MRDEBUG_PORT`, falling back to
+  `DEFAULT_PORT`, via `connect_auto`) — connect via the
+  transports above, then hand off to `#relay`: a raw `IO.select`-based
+  byte pump between the socket and real `STDIN`/`STDOUT`, since the
+  device's `(prdb) ` prompt has no trailing newline for a `#gets`-based
+  relay to wait on. A bare `mrdebug FILE:LINE` (a positional arg, no
+  connection flag) still runs the interim local demo session instead.
+  `Command.dispatch` runs on the device side, so the CLI only relays
+  bytes — no structured RPC layer needed here (contrast
+  `docs/phase4-to-phase3-requests.md`, about the DAP bridge's needs).
+- **`tools/mrdebug/ui/local_console.rb`** (host builds only) —
+  `MRDebug::UI::LocalConsole`: the `(prdb)` prompt, one `STDIN.gets` (now via
+  a `Transport`, defaulting to `Stdio`) per command. Reading exactly one
+  line at a time is what avoids the old `picoruby-editor`-based design's
+  known bug (piped/pasted multi-command input losing everything after a
+  resuming command) — there's no shared read-ahead buffer to lose data from.
+  The stop headline it prints is `session.stop_banner` (see `session.rb`
+  above), not a hardcoded string — so a step/next stop reads `Stop: …`, not
+  `Breakpoint: …`.
 
 ## Known gaps (in progress)
 
-- `Editor::Line#start`'s per-poll `STDIN.read_nonblock(255)` can read more
-  than one full command (with its trailing Enter) into its local `line`
-  buffer in a single call — e.g. multiple commands piped/pasted at once. If
-  one of the *earlier* commands in that chunk causes the `on_break` block to
-  call `break` (`continue`/`step`/`next`/`quit`), that `break` unwinds
-  straight out of `Editor::Line#start` (see the "break-inside-yielded-block"
-  note above), silently discarding whatever was left unread in `line` —
-  including any *later* command in the same chunk. Confirmed via
-  `printf 'b 9\nc\nc\n' | build/host/bin/picoruby script.rb`: the second `c`
-  is lost and the process hangs waiting for input that was already piped in.
-  Typing interactively doesn't trigger this in practice (each keystroke
-  normally arrives in its own poll), but pasting/piping several commands
-  including a resuming one can. Fixing it properly needs `Editor::Line` (a
-  `picoruby-editor` class also used by `picoruby-shell`) to preserve
-  unconsumed input across a break-triggered exit from `start`, which is out
-  of scope for this gem alone.
-- `DapSession` has no hook for "the debugged script finished running to
-  completion" (nothing calls back into Ruby when that happens), so the
-  `terminated` event is only ever sent in response to an explicit
-  `disconnect` request, never on natural script end.
-- `watch`/`display` aren't surfaced over DAP at all yet (CLI-only).
+- **~~Stepping through mrdebug's own source~~ — fixed.**
+  `MRDebug::OwnSource` (`mrblib/mrdebug/own_source.rb`) is a hardcoded,
+  suffix-matched list of this gem's own Ruby files; `Session#stop_reason_for`
+  checks it first and refuses to stop (or count against `step N`/`watch`)
+  inside them. Hardcoded rather than discovered at runtime (`Dir.glob` would
+  need a filesystem, which a PicoRuby target may not have) — remember to
+  update `OwnSource::FILES` when adding, removing, or renaming a file under
+  `mrblib/mrdebug/` or `tools/mrdebug/`. This turned out to be the root
+  cause behind two problems that looked like mruby/VM bugs during Phase3
+  track B (`step N`/`next N`'s counter being consumed by mrdebug's own
+  code, and part of `watch`'s line-shift symptom) — see `docs/known-bugs.md`.
+- **Performance**: `RUN` mode with one or more breakpoints funcalls into
+  Ruby once per *executed source line*, everywhere, not just near a
+  breakpoint's file — the old C implementation had a fast path that skipped
+  irep files unrelated to any breakpoint, dropped when breakpoint matching
+  moved to Ruby. Only `MRDebug::Hook.armed` is left as a fast gate on the C
+  side (see above), so a build with zero active breakpoints and no
+  step/next in flight costs nothing beyond that. See `README.md`'s Overhead
+  section for measured numbers.
+- **PicoRuby/R2P2 support is still just the core, not a real phase.**
+  The `mrbgem.rake`/`src/hook.c` compatibility fixes (see "What this gem
+  is" and `docs/phase3-picoruby-host-verification.md`) only get this
+  gem's existing mruby-only core to build and run under PicoRuby's
+  `PICORB_VM_MRUBY` **POSIX host** build — confirmed for
+  `step`/`next`/`break`/`delete`/`print`/`continue` via `LocalConsole`.
+  Everything `docs/plan-phase1.md`'s "後続フェーズに送る項目" describes for
+  a real PicoRuby phase is still missing: an on-device console UI gem
+  depending on `picoruby-editor`/`picoruby-io-console` (this gem's
+  `tools/mrdebug/ui/local_console.rb` assumes plain stdio, which PicoRuby's
+  own R2P2 binary does not always have), R2P2-ESP32 cross-build wiring, and
+  PicoRuby's mrubyc/femtoruby VM (a different, unrelated implementation
+  would be needed there — `MRB_USE_DEBUG_HOOK`/`code_fetch_hook` are
+  mruby-only). Don't reintroduce further `PICORB_VM_MRUBY`-style branching
+  beyond the two fixes already landed without that being its own explicit,
+  planned phase.
