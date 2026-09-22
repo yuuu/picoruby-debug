@@ -9,6 +9,7 @@ module MRDebug
       'mrblib/mrdebug/command.rb',
       'mrblib/mrdebug/display_expression.rb',
       'mrblib/mrdebug/line_breakpoint.rb',
+      'mrblib/mrdebug/method_breakpoint.rb',
       'mrblib/mrdebug/own_source.rb',
       'mrblib/mrdebug/session.rb',
       'mrblib/mrdebug/transport.rb',

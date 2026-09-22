@@ -194,6 +194,19 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
     fallback matters for `MRDebug::Hook.enter`'s direct-call path, where no
     hook callback (and thus no `hook.paused`) is involved, but `mrb->c` at
     that point genuinely *is* the debuggee's live context.
+  - **Method breakpoints** (`check_method_call`, modeled on mruby's own
+    `mrdb`): every armed tick, `mrb_decode_insn(pc)` (from
+    `mruby-compiler`, a transitive dep via `mruby-eval`) checks whether the
+    instruction is an `OP_SEND`/`SEND0`/`SENDB`/`SSEND`/`SSEND0`/`SSENDB`;
+    if so, and the method symbol is in `hook.method_names` (a small array
+    synced from Ruby by `Hook.watch_method_names`, so the common case is
+    one symbol compare), it funcalls `Session#method_bp_for(recv, mid,
+    is_cfunc)`. A C method (`MRB_METHOD_CFUNC_P`) is stopped on right there
+    (its body runs no hook); a Ruby method sets `hook.deferred_bp`
+    (GC-registered) so the *next* tick — the callee's first instruction —
+    fires the stop, landing inside the method. `on_line` takes an optional
+    4th arg (`forced`, the matched breakpoint) for these; the VM hook's
+    normal line path still passes exactly 3.
 - **`src/frame.c`** — walks whatever `mrdebug_paused_ctx` returns.
   `frame_count`/`frame_at` are plain `ci - cibase` arithmetic (depth 0 =
   innermost); `frame_position` reads `ci->pc` directly for the innermost
@@ -250,19 +263,40 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   - `on_line`'s 3rd parameter (`bnd`) distinguishes a direct stop (always
     present, and *always* stops unconditionally) from a hook-triggered one
     (`nil`; `MRDebug::Hook.frame_binding(0)` is used to build the binding
-    lazily instead). The VM hook's own funcall always passes exactly 3 args
+    lazily instead). The VM hook's line path always passes exactly 3 args
     (`nil` for `bnd` when hook-triggered) — a test double's `#on_line` needs
     a matching arity (`def on_line(file, line, bnd = nil)`), or the VM hook
     silently swallows the resulting `ArgumentError` via `mrb_protect_error`
     (`src/hook.c`) and nothing appears to happen at all. This exact mistake
     shipped undetected in the old `e2e/scenarios/hook_trace.rb` for several
-    steps, since nothing but eyeballing `puts` output checked it.
+    steps, since nothing but eyeballing `puts` output checked it. (The
+    method-breakpoint path passes a 4th arg, `forced`; a real `Session` and
+    the recorder subclasses take `def on_line(file, line, bnd = nil, forced
+    = nil)`.)
+  - **`#method_bp_for(recv, mid, is_cfunc)`** (public — the VM hook
+    funcalls it) returns the `MethodBreakpoint` whose name matches `mid` and
+    whose `#matches_call?(recv)` holds, or `nil`; only in run mode (method
+    breakpoints, like line ones, don't fire mid step/next).
+    **`#add_method_breakpoint`** appends to the same `@breakpoints` array as
+    line breakpoints (one shared number sequence) and calls
+    **`#sync_method_names`**, which pushes the active method breakpoints'
+    name symbols to `Hook.watch_method_names` (also on remove/clear).
 - **`mrblib/mrdebug/line_breakpoint.rb`** — file/line/active, suffix match
   via hand-rolled `String#[]` slicing (see "Avoid `mruby-string-ext`
   methods" above), stable numbering shared with `Session`'s breakpoint
   array (`delete` deactivates in place rather than compacting).
   `#stop_banner(siblings, location)` returns the `"Breakpoint N: …"` headline,
   N being its own index in `siblings` + 1.
+- **`mrblib/mrdebug/method_breakpoint.rb`** — `MRDebug::MethodBreakpoint`: a
+  `(class_name | nil, method_name, singleton?, condition)` tuple, no
+  resolution to file/line (the class need not exist yet). Lives in
+  `@breakpoints` beside `LineBreakpoint` and answers the same protocol
+  (`active?`, `condition`, `numbered_line`, `stop_banner`); `#match?(file,
+  line)` is a hard `false` (it's matched at the call site by `src/hook.c`,
+  not by line). `#matches_call?(recv)` is policy B — `recv.is_a?(klass)` for
+  `Foo#bar` (subclasses and module includers included), `recv.equal?(klass)`
+  for `Foo.bar`; `MethodBreakpoint.resolve` const-gets the name lazily and
+  returns `nil` (matches nothing) while it's undefined.
 - **`mrblib/mrdebug/watch_var_breakpoint.rb`** — `MRDebug::WatchVarBreakpoint`
   (named after `LineBreakpoint`; was `WatchExpression`): a watched expression
   string, its last evaluated value, `#changed?(bnd)`, and `#stop_banner`
@@ -278,6 +312,12 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   without stdio and reusable across front ends (today just
   `LocalConsole`, but the split is exactly the "coreoutputs data, UI prints
   it" boundary `docs/plan-phase1.md` calls for).
+  - **`break`** routes on the argument shape: `parse_method_spec`
+    (hand-rolled, no `Regexp` — same reason as the `mruby-string-ext`
+    avoidance) recognizes `Const#m` / `Const::Const.m` / bare `m` and calls
+    `add_method_breakpoint`; everything else is `[file:]line`. A `.` alone
+    doesn't make it a method spec — `foo.rb:8`'s `foo` fails the
+    uppercase-`Const` check and falls through to the line path.
   - **`list`/`l`** is the one command whose *body* needs I/O (reading the
     stopped file's source text) despite living in this I/O-free core file.
     Rather than splitting a "source reader" out to `tools/mrdebug/` and

@@ -82,10 +82,18 @@ file the VM reports, so `break foo.rb:8` matches `/path/to/foo.rb`.
 | `continue` | `c`, empty input | Resume until the next breakpoint |
 | `step` | `s` | Stop at the next executed line, including inside a call |
 | `next` | `n` | Stop at the next line in the same frame or shallower (does not descend into a call) |
-| `break [<file>:]<line>` | `b` | Add a breakpoint (file defaults to the currently stopped file), or list breakpoints with no argument |
+| `break [<file>:]<line>` | `b` | Add a line breakpoint (file defaults to the currently stopped file), or list breakpoints with no argument |
+| `break <Class>#<method>` / `<Class>.<method>` / `<method>` | `b` | Add a method breakpoint: stop when that method is called (`#` instance, `.` singleton, bare name = any class) |
 | `delete [<number>]` | `d` | Delete breakpoint `<number>` (as listed by `break`), or all breakpoints with no argument |
 | `list [[<file>:]<line>]` | `l` | Show 5 lines of source on either side of the current line (or `<line>`, in `<file>` if given), current line marked with `=>` |
 | `print <expression>` | `p` | Evaluate `<expression>` against the stopped frame's binding |
+
+A method breakpoint (`break Foo#bar`, `break Foo.bar`, `break bar`) stops
+*inside* the method for a Ruby method, or just before the call for a C
+method (`Breakpoint N: Foo#bar (about to call a C method)`). `Foo#bar` also
+fires for subclass instances and module includers; the class need not be
+defined yet. `... if <expr>` works here too (evaluated in the method's own
+frame). Line and method breakpoints share one number sequence.
 
 There's no `quit` yet — let the script run to completion with `continue`.
 An unrecognized command prints `unknown command: ...` and stays at the prompt.
@@ -183,6 +191,12 @@ line, not just near a breakpoint — about 1.8µs/line here. See "The
 `MRB_USE_DEBUG_HOOK` build-wide cost" above for why there's no cheaper
 middle ground in phase 1's design.
 
+A **method breakpoint** adds a C-side check on every call instruction while
+armed (a symbol compare against the watched method names), and funcalls into
+Ruby only when a name actually matches. Setting `break each` when `each` runs
+in a hot loop therefore costs a Ruby funcall per iteration; a distinctively
+named method costs only the symbol compare.
+
 ## Dependencies
 
 - `mruby-binding`, `mruby-eval` (mruby core gems — for `Binding` and
@@ -216,8 +230,9 @@ script.rb` run doesn't need this, since it compiles at runtime.
 
 Not in phase 1, roughly in the order a future phase might tackle them:
 
-- `quit`, `bt`/`frame`/`up`/`down`, `watch`, `display`, `finish`,
-  conditional/method breakpoints, `catch`, `step N`/`next N`
+- `quit`, `bt`/`frame`/`up`/`down`, `finish`, `catch` (exception breakpoints)
+  (`watch`, `display`, `step N`/`next N`, conditional and method breakpoints
+  have since landed)
 - PicoRuby / R2P2 support
 - A serial transport (TCP/Unix socket transport and the host CLI binary
   exist — see [Remote debugging over a socket](#remote-debugging-over-a-socket))

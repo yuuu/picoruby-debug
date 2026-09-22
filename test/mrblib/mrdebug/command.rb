@@ -147,6 +147,42 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('Command.dispatch break routes a method spec to a MethodBreakpoint') do
+  session = MRDebug::Session.new
+
+  out, action = MRDebug::Command.dispatch(session, 'break Foo#bar')
+  assert_equal :stay, action
+  assert_equal ['Breakpoint 1 added at Foo#bar'], out
+
+  MRDebug::Command.dispatch(session, 'b Foo.baz')
+  MRDebug::Command.dispatch(session, 'break A::B#qux if x')
+  MRDebug::Command.dispatch(session, 'break helper')
+
+  assert_true session.breakpoints[0].is_a?(MRDebug::MethodBreakpoint)
+  assert_equal 'Foo#bar',       session.breakpoints[0].to_s
+  assert_equal 'Foo.baz',       session.breakpoints[1].to_s
+  assert_equal 'A::B#qux if x',  session.breakpoints[2].to_s
+  assert_equal 'helper',        session.breakpoints[3].to_s
+
+  out, _ = MRDebug::Command.dispatch(session, 'break')
+  assert_equal ['  #1 Foo#bar', '  #2 Foo.baz', '  #3 A::B#qux if x', '  #4 helper'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch break still treats a bare number and file:line as line breakpoints') do
+  session = MRDebug::Session.new
+  session.on_line('/x.rb', 1, binding)
+
+  MRDebug::Command.dispatch(session, 'break 10')
+  MRDebug::Command.dispatch(session, 'break foo.rb:20')
+
+  assert_true session.breakpoints[0].is_a?(MRDebug::LineBreakpoint)
+  assert_true session.breakpoints[1].is_a?(MRDebug::LineBreakpoint)
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('Command.dispatch print evaluates against the stopped binding') do
   session = MRDebug::Session.new
   x = 42
