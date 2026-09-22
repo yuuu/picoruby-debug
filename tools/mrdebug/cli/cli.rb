@@ -13,7 +13,11 @@ module MRDebug
       elsif options.port
         connect_tcp(options, transport)
       elsif options.sock_path
-        connect_unix(options, transport)
+        if defined?(UNIXSocket)
+          connect_unix(options, transport)
+        else
+          transport.write("#{unsupported_message('--sock-path')}\n")
+        end
       elsif options.unsupported
         transport.write("#{unsupported_message(options.unsupported)}\n")
       elsif argv.empty?
@@ -44,8 +48,12 @@ module MRDebug
     end
 
     def self.unsupported_message(flag)
-      "#{flag}: not supported yet -- no serial transport exists. Use --port " \
-      'or --sock-path against a device that called MRDebug.listen_tcp/listen_unix.'
+      if flag == '--sock-path'
+        '--sock-path: not supported on this build -- no UNIXSocket. Use --port instead.'
+      else
+        "#{flag}: not supported yet -- no serial transport exists. Use --port " \
+        'or --sock-path against a device that called MRDebug.listen_tcp/listen_unix.'
+      end
     end
 
     TCP_HOST = '127.0.0.1'
@@ -84,7 +92,7 @@ module MRDebug
         end
         if local_open && ready.include?(local_in)
           begin
-            remote_io.write(local_in.sysread(4096))
+            remote_io.write(read_some(local_in))
           rescue EOFError
             local_open = false
           end
@@ -94,13 +102,17 @@ module MRDebug
       transport.write("\n(connection closed)\n")
     end
 
-    # A ready select() doesn't mean one sysread(4096) drains it all.
+    # A ready select() doesn't mean one read drains it all.
     def self.drain(io, out)
       loop do
-        out.write(io.sysread(4096))
+        out.write(read_some(io))
         out.flush
         break unless IO.select([io], nil, nil, 0)
       end
+    end
+
+    def self.read_some(io)
+      io.respond_to?(:sysread) ? io.sysread(4096) : io.readpartial(4096)
     end
 
     def self.run_demo_session(options, transport)

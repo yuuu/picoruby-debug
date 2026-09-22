@@ -1,13 +1,14 @@
 module MRDebug
   module Transport
-    # Host builds only -- mruby-socket. #gets uses #sysread, not the
-    # buffered IO#gets, to avoid an ESPIPE from #write's internal lseek.
+    # #sysread avoids an ESPIPE from #write's internal lseek; picoruby-socket
+    # only has #readpartial.
     class Socket < Base
       attr_reader :io
 
       def initialize(io)
         @io = io
         @buf = ''
+        @read_method = io.respond_to?(:sysread) ? :sysread : :readpartial
       end
 
       def gets
@@ -18,7 +19,7 @@ module MRDebug
             @buf = @buf[(nl + 1)..-1]
             return strip_eol(line)
           end
-          @buf += @io.sysread(4096)
+          @buf += @io.__send__(@read_method, 4096)
         end
       rescue EOFError
         return nil if @buf.empty?

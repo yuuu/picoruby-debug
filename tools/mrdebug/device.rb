@@ -44,7 +44,9 @@ module MRDebug
     port ? port.to_i : DEFAULT_PORT
   end
 
+  # nil (as if unset) when UNIXServer doesn't exist, e.g. picoruby-socket.
   def self.default_sock
+    return nil unless defined?(UNIXServer)
     env_value('MRDEBUG_SOCK')
   end
 
