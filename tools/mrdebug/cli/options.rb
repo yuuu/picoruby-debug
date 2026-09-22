@@ -3,7 +3,9 @@ module MRDebug
     # --port/--sock-path take a value, so parsing walks argv by index
     # instead of a plain #each.
     class Options
-      attr_reader :file, :line, :help, :version, :port, :sock_path, :dap_port, :unsupported
+      attr_reader :file, :line, :help, :version, :host, :port, :sock_path, :dap_port, :unsupported
+
+      DEFAULT_HOST = '127.0.0.1'
 
       def self.parse(argv)
         new(argv)
@@ -14,6 +16,7 @@ module MRDebug
         @line = 1
         @help = false
         @version = false
+        @host = DEFAULT_HOST
         @port = nil
         @sock_path = nil
         @dap_port = nil
@@ -27,6 +30,9 @@ module MRDebug
             @help = true
           when '--version'
             @version = true
+          when '--host'
+            i += 1
+            @host = argv[i]
           when '--port'
             i += 1
             @port = argv[i].to_i

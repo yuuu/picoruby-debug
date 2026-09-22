@@ -44,6 +44,8 @@ module MRDebug
       "Usage: mrdebug [file[:line]]\n" \
       "  (no args)         connect to MRDEBUG_SOCK, else 127.0.0.1:MRDEBUG_PORT (#{MRDebug::DEFAULT_PORT})\n" \
       "  --port PORT        connect to a device listening on 127.0.0.1:PORT\n" \
+      "  --host HOST --port PORT   connect to a device listening on HOST:PORT\n" \
+      "                     (e.g. a real board's IP over WiFi; default HOST is 127.0.0.1)\n" \
       "  --sock-path PATH   connect to a device listening on a Unix socket\n" \
       "  --port PORT --dap-port DAP_PORT   bridge a DAP client (e.g. VS Code's\n" \
       "                     vscode-rdbg, attach) on DAP_PORT to a device on PORT\n" \
@@ -60,26 +62,24 @@ module MRDebug
       end
     end
 
-    TCP_HOST = '127.0.0.1'
-
     def self.connect_tcp(options, transport)
-      remote = MRDebug::Transport::TCP.connect(TCP_HOST, options.port)
-      transport.write("Connected to #{TCP_HOST}:#{options.port}\n")
+      remote = MRDebug::Transport::TCP.connect(options.host, options.port)
+      transport.write("Connected to #{options.host}:#{options.port}\n")
       relay(remote.io, transport)
     rescue => e
-      transport.write("connect #{TCP_HOST}:#{options.port} failed: #{e.class}: #{e.message}\n")
+      transport.write("connect #{options.host}:#{options.port} failed: #{e.class}: #{e.message}\n")
     ensure
       remote.close if remote
     end
 
     # Bridges a DAP client (VS Code's vscode-rdbg, attach) on options.dap_port
-    # to a device already listening on options.port (MRDebug.listen_tcp).
-    # Blocks the whole session (one DAP client, matching vscode-rdbg's
-    # typical single attach).
+    # to a device already listening on options.host:options.port
+    # (MRDebug.listen_tcp). Blocks the whole session (one DAP client,
+    # matching vscode-rdbg's typical single attach).
     def self.connect_dap(options, transport)
-      link = MRDebug::Transport::TCP.connect(TCP_HOST, options.port)
+      link = MRDebug::Transport::TCP.connect(options.host, options.port)
       device = DeviceLink.new(link.io)
-      transport.write("Connected to device at #{TCP_HOST}:#{options.port}\n")
+      transport.write("Connected to device at #{options.host}:#{options.port}\n")
       device.wait_for_entry
       transport.write("DAP bridge listening on #{options.dap_port}; waiting for a client to attach...\n")
       DapServer.new(device, options.dap_port).run
