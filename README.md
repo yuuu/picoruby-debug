@@ -13,9 +13,15 @@ full design rationale.
 **Phase 1 status**: mruby only, six commands (`continue` / `step` / `next` /
 `break` / `delete` / `print`). The core also builds and runs under
 PicoRuby's `PICORB_VM_MRUBY` POSIX host build (see
-`docs/phase3-picoruby-host-verification.md`), but there's no PicoRuby/R2P2
-support beyond that yet — no on-device UI, no R2P2-ESP32 build. See
-[Roadmap](#roadmap) for what's intentionally not here yet.
+`docs/phase3-picoruby-host-verification.md`) and cross-compiles for
+R2P2-ESP32 (ESP32-S3, PicoRuby/mruby VM) — `binding.debugger` has been
+confirmed working on real hardware there, but only after raising
+`picoruby-esp32`'s `PICORB_TASK_STACK_SIZE` to at least 32768 (its 8192
+default overflows `picoruby_task` as soon as the VM hook's context swap
+runs). This was a manual `conf.gem gemdir:` test, not a real R2P2-ESP32
+integration — there's still no build_config wiring for it upstream, no
+on-device UI. See [Roadmap](#roadmap) for what's intentionally not here
+yet.
 
 ## Installation
 
@@ -233,7 +239,9 @@ Not in phase 1, roughly in the order a future phase might tackle them:
 - `quit`, `bt`/`frame`/`up`/`down`, `finish`, `catch` (exception breakpoints)
   (`watch`, `display`, `step N`/`next N`, conditional and method breakpoints
   have since landed)
-- PicoRuby / R2P2 support
+- PicoRuby / R2P2 support (POSIX host build and an R2P2-ESP32 cross-build
+  smoke test have since landed — see "Phase 1 status" above; a real
+  on-device console UI and upstream build_config wiring have not)
 - A serial transport (TCP/Unix socket transport and the host CLI binary
   exist — see [Remote debugging over a socket](#remote-debugging-over-a-socket))
 - A host-side DAP bridge for `vscode-rdbg` compatibility

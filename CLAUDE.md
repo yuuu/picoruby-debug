@@ -17,21 +17,35 @@ source" limitation) that are easy to regress.
 PicoRuby/R2P2 support is still not a planned phase of its own — phase 1
 remains mruby-only by design, and no on-device console UI gem
 (`mrdebug-console` or similar, still Phase3 scope) exists yet. What *has*
-landed is two narrow, mechanical compatibility fixes so this gem's
-existing core (Ruby + `src/hook.c`/`src/frame.c`) also builds and runs
-under PicoRuby's `PICORB_VM_MRUBY` host build without changing mainline
-mruby's behavior at all: `mrbgem.rake`'s dependency resolution branches
-`core:` vs `gemdir:` (PicoRuby vendors `mruby-binding`/`mruby-eval`/
-`mruby-io`/`mruby-socket` under `mrbgems/picoruby-mruby/lib/mruby/mrbgems`
-rather than exposing them under its own `MRUBY_ROOT/mrbgems`), and
-`src/hook.c`'s `dbg_context_reset` guards a `svars` field PicoRuby's
-vendored mruby fork's `struct mrb_context` doesn't have. See
-`docs/phase3-picoruby-host-verification.md` for what was confirmed working
-(`step`/`next`/`break`/`delete`/`print`/`continue`, PICORB_VM_MRUBY POSIX
-host build only) and what remains untouched (R2P2-ESP32 cross build,
-on-device UI, PicoRuby's own `mruby-c`/femtoruby VM). Don't add further
-`PICORB_VM_MRUBY`-style branching beyond these two fixes without that
-being its own explicit, planned phase.
+landed is a handful of narrow, mechanical compatibility fixes so this
+gem's existing core (Ruby + `src/hook.c`/`src/frame.c`) also builds and
+runs under PicoRuby's `PICORB_VM_MRUBY` host build without changing
+mainline mruby's behavior at all: `mrbgem.rake`'s dependency resolution
+branches `core:` vs `gemdir:` (PicoRuby vendors `mruby-binding`/
+`mruby-eval`/`mruby-io` under `mrbgems/picoruby-mruby/lib/mruby/mrbgems`
+rather than exposing them under its own `MRUBY_ROOT/mrbgems`; the host
+CLI's socket/env needs go through PicoRuby's own `picoruby-socket`/
+`picoruby-env` instead of mainline `mruby-socket`/`mruby-env`, which
+would otherwise redefine the same class names and silently abort
+`mrb_open()`'s gem-init loop — see `tools/mrdebug/transport/socket.rb`),
+and `src/hook.c`'s `dbg_context_reset` guards a `svars` field PicoRuby's
+vendored mruby fork's `struct mrb_context` doesn't have.
+
+The PICORB_VM_MRUBY **POSIX host** build (core plus the host CLI/DapBridge)
+is confirmed working this way. R2P2-ESP32 (ESP32-S3, PicoRuby/mruby VM)
+cross-compiles cleanly and `binding.debugger` has been confirmed working
+on real hardware, but **only with `picoruby-esp32`'s `PICORB_TASK_STACK_SIZE`
+raised to at least 32768** (its 8192 default overflows `picoruby_task`
+the instant the VM hook's context-swap/funcall chain runs — quadrupling
+the wrong build's define does nothing, since `picoruby-esp32.c` is an
+ESP-IDF CMake component read from `ENV['PICORB_TASK_STACK_SIZE']`, not
+from this gem's own build config). This was verified with a manual
+`conf.gem gemdir:` pointing at a local checkout of this gem, not a real
+R2P2-ESP32 integration — there's still no build_config wiring for it
+upstream, no on-device console UI, and PicoRuby's own `mruby-c`/femtoruby
+VM remains unsupported (`MRB_USE_DEBUG_HOOK`/`code_fetch_hook` are
+mruby-only). Don't add further `PICORB_VM_MRUBY`-style branching beyond
+what's already landed without that being its own explicit, planned phase.
 
 ## Design policy
 
@@ -420,18 +434,17 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   step/next in flight costs nothing beyond that. See `README.md`'s Overhead
   section for measured numbers.
 - **PicoRuby/R2P2 support is still just the core, not a real phase.**
-  The `mrbgem.rake`/`src/hook.c` compatibility fixes (see "What this gem
-  is" and `docs/phase3-picoruby-host-verification.md`) only get this
-  gem's existing mruby-only core to build and run under PicoRuby's
-  `PICORB_VM_MRUBY` **POSIX host** build — confirmed for
-  `step`/`next`/`break`/`delete`/`print`/`continue` via `LocalConsole`.
+  See "What this gem is" for the `mrbgem.rake`/`src/hook.c` compatibility
+  fixes and the R2P2-ESP32 (ESP32-S3) cross-build/hardware verification,
+  including the `PICORB_TASK_STACK_SIZE=32768` requirement.
   Everything `docs/plan-phase1.md`'s "後続フェーズに送る項目" describes for
   a real PicoRuby phase is still missing: an on-device console UI gem
   depending on `picoruby-editor`/`picoruby-io-console` (this gem's
   `tools/mrdebug/ui/local_console.rb` assumes plain stdio, which PicoRuby's
-  own R2P2 binary does not always have), R2P2-ESP32 cross-build wiring, and
-  PicoRuby's mrubyc/femtoruby VM (a different, unrelated implementation
+  own R2P2 binary does not always have), real R2P2-ESP32 build_config
+  wiring upstream (only manually verified via `conf.gem gemdir:` so far),
+  and PicoRuby's mrubyc/femtoruby VM (a different, unrelated implementation
   would be needed there — `MRB_USE_DEBUG_HOOK`/`code_fetch_hook` are
   mruby-only). Don't reintroduce further `PICORB_VM_MRUBY`-style branching
-  beyond the two fixes already landed without that being its own explicit,
+  beyond what's already landed without that being its own explicit,
   planned phase.
