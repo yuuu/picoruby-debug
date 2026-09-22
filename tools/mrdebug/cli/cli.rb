@@ -10,6 +10,8 @@ module MRDebug
         transport.write("#{usage}\n")
       elsif options.version
         transport.write("mrdebug (interim build -- no wire protocol yet)\n")
+      elsif options.port && options.dap_port
+        connect_dap(options, transport)
       elsif options.port
         connect_tcp(options, transport)
       elsif options.sock_path
@@ -43,6 +45,8 @@ module MRDebug
       "  (no args)         connect to MRDEBUG_SOCK, else 127.0.0.1:MRDEBUG_PORT (#{MRDebug::DEFAULT_PORT})\n" \
       "  --port PORT        connect to a device listening on 127.0.0.1:PORT\n" \
       "  --sock-path PATH   connect to a device listening on a Unix socket\n" \
+      "  --port PORT --dap-port DAP_PORT   bridge a DAP client (e.g. VS Code's\n" \
+      "                     vscode-rdbg, attach) on DAP_PORT to a device on PORT\n" \
       "  --serial DEV, --open   (not supported yet)\n" \
       '  --help, --version'
     end
@@ -66,6 +70,24 @@ module MRDebug
       transport.write("connect #{TCP_HOST}:#{options.port} failed: #{e.class}: #{e.message}\n")
     ensure
       remote.close if remote
+    end
+
+    # Bridges a DAP client (VS Code's vscode-rdbg, attach) on options.dap_port
+    # to a device already listening on options.port (MRDebug.listen_tcp).
+    # Blocks the whole session (one DAP client, matching vscode-rdbg's
+    # typical single attach).
+    def self.connect_dap(options, transport)
+      link = MRDebug::Transport::TCP.connect(TCP_HOST, options.port)
+      device = DeviceLink.new(link.io)
+      transport.write("Connected to device at #{TCP_HOST}:#{options.port}\n")
+      device.wait_for_entry
+      transport.write("DAP bridge listening on #{options.dap_port}; waiting for a client to attach...\n")
+      DapServer.new(device, options.dap_port).run
+      transport.write("(dap session ended)\n")
+    rescue => e
+      transport.write("dap bridge failed: #{e.class}: #{e.message}\n")
+    ensure
+      device.close if device
     end
 
     def self.connect_unix(options, transport)

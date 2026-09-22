@@ -95,14 +95,30 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-assert('DapBridge continue/next/stepIn drive RemoteSession and report terminated') do
+assert('DapBridge continue/next/stepIn drive @remote and just ack -- no event of their own') do
   remote = dap_bridge_test_remote
   bridge = MRDebug::CLI::DapBridge.new(remote)
   bridge.handle('seq' => 1, 'type' => 'request', 'command' => 'configurationDone')
 
-  msgs = bridge.handle('seq' => 2, 'type' => 'request', 'command' => 'continue')
-  assert_true msgs[0]['success']
-  assert_equal 'terminated', msgs[1]['event']
+  %w[continue next stepIn].each do |cmd|
+    msgs = bridge.handle('seq' => 2, 'type' => 'request', 'command' => cmd)
+    assert_equal 1, msgs.size
+    assert_true msgs[0]['success']
+  end
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('DapBridge#stopped_notification/#terminated_notification build unprompted events') do
+  bridge = MRDebug::CLI::DapBridge.new(dap_bridge_test_remote)
+
+  stopped = bridge.stopped_notification('breakpoint')
+  assert_equal 'event', stopped['type']
+  assert_equal 'stopped', stopped['event']
+  assert_equal 'breakpoint', stopped['body']['reason']
+
+  terminated = bridge.terminated_notification
+  assert_equal 'terminated', terminated['event']
 ensure
   MRDebug::Hook.uninstall
 end
