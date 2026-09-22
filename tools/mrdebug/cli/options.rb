@@ -3,7 +3,7 @@ module MRDebug
     # --port/--sock-path take a value, so parsing walks argv by index
     # instead of a plain #each.
     class Options
-      attr_reader :file, :line, :help, :version, :port, :sock_path, :unsupported
+      attr_reader :file, :line, :help, :version, :port, :sock_path, :dap_port, :unsupported
 
       def self.parse(argv)
         new(argv)
@@ -16,6 +16,7 @@ module MRDebug
         @version = false
         @port = nil
         @sock_path = nil
+        @dap_port = nil
         @unsupported = nil
 
         i = 0
@@ -32,6 +33,9 @@ module MRDebug
           when '--sock-path'
             i += 1
             @sock_path = argv[i]
+          when '--dap-port'
+            i += 1
+            @dap_port = argv[i].to_i
           when '--serial', '--open', '-O'
             @unsupported ||= arg
           else
