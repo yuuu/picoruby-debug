@@ -32,6 +32,10 @@ module MRDebug
       @session.breakpoints
     end
 
+    def backtrace
+      @session.backtrace
+    end
+
     def add_display(expr)
       @session.add_display(expr)
     end

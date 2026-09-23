@@ -8,6 +8,7 @@ module MRDebug
       'd' => :delete, 'delete' => :delete,
       'l' => :list, 'list' => :list,
       'p' => :print, 'print' => :print,
+      'bt' => :backtrace, 'backtrace' => :backtrace, 'where' => :backtrace,
       'display' => :display,
       'watch' => :watch,
     }
@@ -37,6 +38,8 @@ module MRDebug
         [list_cmd(session, arg), :stay]
       when :print
         [print_cmd(session, arg), :stay]
+      when :backtrace
+        [backtrace_cmd(session), :stay]
       when :display
         [display_cmd(session, arg), :stay]
       when :watch
@@ -302,6 +305,14 @@ module MRDebug
         # Exception, not StandardError: a bad expression can raise SyntaxError.
         ["#{e.class}: #{e.message}"]
       end
+    end
+
+    def self.backtrace_cmd(session)
+      frames = session.backtrace
+      return ['No frame information available'] if frames.empty?
+      lines = []
+      frames.each_with_index { |(file, line), i| lines << "##{i} #{file}:#{line}" }
+      lines
     end
   end
 end

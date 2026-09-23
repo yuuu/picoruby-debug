@@ -43,6 +43,25 @@ module MRDebug
       @displays.map { |d| [d.expr, d.result(@binding)] }
     end
 
+    # [[file, line], ...] from depth 0 (the current stop) outward. Depth 0
+    # always reuses @file/@line rather than Hook.frame_position(offset):
+    # for a direct binding.debugger stop, that position belongs to
+    # MRDebug::Hook.enter's own frame, not the call site (see
+    # DIRECT_STOP_FRAME_OFFSET above).
+    def backtrace
+      offset = @direct_stop ? DIRECT_STOP_FRAME_OFFSET : 0
+      n = MRDebug::Hook.frame_count - offset
+      return [] if n <= 0
+      frames = []
+      i = 0
+      while i < n
+        pos = i == 0 ? [@file, @line] : MRDebug::Hook.frame_position(i + offset)
+        frames << pos if pos
+        i += 1
+      end
+      frames
+    end
+
     def add_breakpoint(file, line, condition = nil)
       @breakpoints << LineBreakpoint.new(file, line, condition)
       update_armed

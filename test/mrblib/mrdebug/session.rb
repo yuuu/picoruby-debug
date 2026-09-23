@@ -219,3 +219,40 @@ ensure
   MRDebug::Hook.singleton_class.send(:alias_method, :armed=, :orig_armed_setter_for_test)
   MRDebug::Hook.singleton_class.send(:remove_method, :orig_armed_setter_for_test)
 end
+
+assert('Session#backtrace: hook-triggered stop uses depth 0 from @file/@line, offset 0') do
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
+  MRDebug::Hook.define_singleton_method(:frame_count) { 1 }
+  begin
+    session = MRDebug::Session.new
+    session.step_mode! # so on_line actually stops (no breakpoint needed)
+    session.on_line('a.rb', 5) # no Binding: not a direct stop
+
+    assert_equal [['a.rb', 5]], session.backtrace
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
+end
+
+assert('Session#backtrace: a direct binding.debugger stop subtracts DIRECT_STOP_FRAME_OFFSET') do
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
+  MRDebug::Hook.define_singleton_method(:frame_count) { 5 } # 3 offset frames + 2 real ones
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_position_for_test, :frame_position)
+  MRDebug::Hook.define_singleton_method(:frame_position) { |depth| depth == 4 ? ['caller.rb', 20] : nil }
+  begin
+    session = MRDebug::Session.new
+    session.on_line('a.rb', 10, binding) # a Binding: a direct stop
+
+    assert_equal [['a.rb', 10], ['caller.rb', 20]], session.backtrace
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_position, :orig_frame_position_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_position_for_test)
+end

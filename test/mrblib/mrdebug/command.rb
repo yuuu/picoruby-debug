@@ -358,3 +358,17 @@ assert('Command.dispatch reports an unknown command') do
 ensure
   MRDebug::Hook.uninstall
 end
+
+assert('Command.dispatch bt/backtrace/where all report the same backtrace, innermost frame first') do
+  session = MRDebug::Session.new
+  session.on_line('/x.rb', 1, binding)
+
+  %w[bt backtrace where].each do |verb|
+    out, action = MRDebug::Command.dispatch(session, verb)
+    assert_equal :stay, action
+    assert_true out.size > 0
+    assert_equal '#0 /x.rb:1', out[0]
+  end
+ensure
+  MRDebug::Hook.uninstall
+end

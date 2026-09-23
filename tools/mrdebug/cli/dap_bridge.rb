@@ -5,8 +5,9 @@ module MRDebug
     # device -- see device_link.rb). #handle takes a parsed request Hash
     # and returns response/event Hashes, so it's testable without a
     # socket; #handle_message wraps that with Json for raw text. stepOut/
-    # stackTrace/scopes/variables/evaluate aren't handled yet -- @remote
-    # has no frame API to forward them to. continue/next/stepIn only ack
+    # scopes/variables/evaluate aren't handled yet -- @remote has no way
+    # to forward a frame's locals/eval over the wire, only its backtrace
+    # (stackTrace, via #backtrace). continue/next/stepIn only ack
     # here; the *next* stop (or termination) is reported later via
     # #stopped_notification/#terminated_notification, once whoever is
     # actually watching @remote (DapServer, for a real device) observes it
@@ -109,7 +110,9 @@ module MRDebug
         when 'stepIn'
           @remote.step_mode!
           [response(request)]
-        when 'stepOut', 'stackTrace', 'scopes', 'variables', 'evaluate'
+        when 'stackTrace'
+          [response(request, stack_trace_body)]
+        when 'stepOut', 'scopes', 'variables', 'evaluate'
           [not_supported(request)]
         when 'setBreakpoints'
           [response(request, set_breakpoints_body(request))]
@@ -149,6 +152,27 @@ module MRDebug
         lines.each { |line| @remote.add_breakpoint(file, line) }
 
         { 'breakpoints' => lines.map { |line| { 'verified' => true, 'line' => line } } }
+      end
+
+      # frame ids are just depth (0 = innermost/current) -- fine since
+      # scopes/variables (which would need to look a frame id back up)
+      # aren't implemented yet.
+      def stack_trace_body
+        frames = @remote.backtrace
+        stack_frames = []
+        i = 0
+        while i < frames.size
+          file, line = frames[i]
+          stack_frames << {
+            'id' => i,
+            'name' => i == 0 ? 'top' : "frame #{i}",
+            'line' => line,
+            'column' => 1,
+            'source' => { 'name' => basename(file), 'path' => file },
+          }
+          i += 1
+        end
+        { 'stackFrames' => stack_frames, 'totalFrames' => stack_frames.size }
       end
 
       def basename(path)

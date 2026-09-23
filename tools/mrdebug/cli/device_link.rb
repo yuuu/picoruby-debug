@@ -104,6 +104,20 @@ module MRDebug
         true
       end
 
+      # [[file, line], ...] from the device's `bt` command, parsing
+      # "#N file:line" lines -- same shape as RemoteSession#backtrace's
+      # direct Session#backtrace call, so DapBridge can treat either
+      # @remote identically.
+      def backtrace
+        lines = command('bt')
+        frames = []
+        lines.each do |line|
+          frame = parse_backtrace_line(line)
+          frames << frame if frame
+        end
+        frames
+      end
+
       # Resume commands never block: the next chunk is the device's *next*
       # stop, delivered later via #poll from the caller's own select loop,
       # not a synchronous reply to this call.
@@ -135,6 +149,17 @@ module MRDebug
 
       def read_some(io)
         io.respond_to?(:sysread) ? io.sysread(4096) : io.readpartial(4096)
+      end
+
+      # "#N file:line" -> [file, line], or nil for a non-matching line
+      # ("No frame information available").
+      def parse_backtrace_line(line)
+        sp = line.index(' ')
+        return nil unless sp
+        rest = line[(sp + 1)..-1]
+        colon = rest.rindex(':')
+        return nil unless colon
+        [rest[0, colon], rest[(colon + 1)..-1].to_i]
       end
     end
   end

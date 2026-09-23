@@ -142,15 +142,33 @@ ensure
   MRDebug::Hook.uninstall
 end
 
-assert('DapBridge reports stackTrace/scopes/variables/evaluate/stepOut as not supported yet') do
+assert('DapBridge reports scopes/variables/evaluate/stepOut as not supported yet') do
   bridge = MRDebug::CLI::DapBridge.new(dap_bridge_test_remote)
   bridge.handle('seq' => 1, 'type' => 'request', 'command' => 'configurationDone')
 
-  %w[stackTrace scopes variables evaluate stepOut].each do |cmd|
+  %w[scopes variables evaluate stepOut].each do |cmd|
     msgs = bridge.handle('seq' => 2, 'type' => 'request', 'command' => cmd)
     assert_false msgs[0]['success']
     assert_true msgs[0]['message'].include?('not supported yet')
   end
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('DapBridge stackTrace reports the backtrace, innermost frame first') do
+  remote = dap_bridge_test_remote
+  bridge = MRDebug::CLI::DapBridge.new(remote)
+  bridge.handle('seq' => 1, 'type' => 'request', 'command' => 'configurationDone')
+
+  msgs = bridge.handle('seq' => 2, 'type' => 'request', 'command' => 'stackTrace')
+
+  assert_true msgs[0]['success']
+  frames = msgs[0]['body']['stackFrames']
+  assert_true frames.size > 0
+  assert_equal '/device/foo.rb', frames[0]['source']['path']
+  assert_equal 'foo.rb', frames[0]['source']['name']
+  assert_equal 1, frames[0]['line']
+  assert_equal msgs[0]['body']['totalFrames'], frames.size
 ensure
   MRDebug::Hook.uninstall
 end
