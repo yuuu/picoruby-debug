@@ -36,6 +36,20 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
     spec.bins << 'mrdebug'
   end
 
+  # A PicoRuby cross build (e.g. R2P2-ESP32) that isn't a host build at all
+  # still wants the TCP transport for a device-side listen_tcp/DapBridge
+  # target -- same picoruby-socket/-env picoruby? uses above, just without
+  # the CLI binary or Transport::Stdio (mruby-io), which a firmware build
+  # has no use for.
+  if spec.build.respond_to?(:picoruby?) && spec.build.picoruby? && !spec.build.host? &&
+     spec.build.respond_to?(:platform?) && spec.build.platform?(:esp32)
+    spec.add_dependency 'picoruby-socket', core: 'picoruby-socket'
+    spec.add_dependency 'picoruby-env', core: 'picoruby-env'
+    spec.rbfiles << "#{spec.dir}/tools/mrdebug/transport/socket.rb"
+    spec.rbfiles << "#{spec.dir}/tools/mrdebug/ui/local_console.rb"
+    spec.rbfiles << "#{spec.dir}/tools/mrdebug/device.rb"
+  end
+
   # PicoRuby's mrb_context has no svars field; see src/hook.c's guard.
   if spec.build.respond_to?(:picoruby?) && spec.build.picoruby?
     spec.build.defines << 'MRDEBUG_NO_SVARS'

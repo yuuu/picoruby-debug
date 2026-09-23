@@ -1,13 +1,16 @@
 module MRDebug
   module CLI
-    # A DAP request handler on top of a RemoteSession: this class never
-    # touches a device directly. #handle takes a parsed request Hash and
-    # returns response/event Hashes, so it's testable without a socket;
-    # #handle_message wraps that with Json for raw text. stepOut/
-    # stackTrace/scopes/variables/evaluate aren't handled yet -- RemoteSession
-    # has no frame API to forward them to. continue/next/stepIn report
-    # `terminated` right after resuming, since nothing keeps running behind
-    # RemoteSession's in-process delegate yet.
+    # A DAP request handler on top of a @remote (a RemoteSession for the
+    # same-process interim demo, or a DeviceLink for a real TCP-connected
+    # device -- see device_link.rb). #handle takes a parsed request Hash
+    # and returns response/event Hashes, so it's testable without a
+    # socket; #handle_message wraps that with Json for raw text. stepOut/
+    # stackTrace/scopes/variables/evaluate aren't handled yet -- @remote
+    # has no frame API to forward them to. continue/next/stepIn only ack
+    # here; the *next* stop (or termination) is reported later via
+    # #stopped_notification/#terminated_notification, once whoever is
+    # actually watching @remote (DapServer, for a real device) observes it
+    # -- @remote's own resume methods no longer block waiting for it.
     class DapBridge
       def initialize(remote)
         @remote = remote
@@ -31,6 +34,18 @@ module MRDebug
         @handshake_done ? handle_stop_request(request) : handle_handshake_request(request)
       rescue => e
         [error_response(request, e)]
+      end
+
+      # An unprompted `stopped` event for the caller to send whenever it
+      # observes @remote stop on its own (e.g. DapServer polling a
+      # DeviceLink after a continue/next/stepIn).
+      def stopped_notification(reason)
+        stopped_event(reason)
+      end
+
+      # An unprompted `terminated` event, likewise.
+      def terminated_notification
+        terminated_event
       end
 
       private
@@ -87,13 +102,13 @@ module MRDebug
         case request['command']
         when 'continue'
           @remote.run_mode!
-          [response(request, { 'allThreadsContinued' => true }), terminated_event]
+          [response(request, { 'allThreadsContinued' => true })]
         when 'next'
           @remote.next_mode!
-          [response(request), terminated_event]
+          [response(request)]
         when 'stepIn'
           @remote.step_mode!
-          [response(request), terminated_event]
+          [response(request)]
         when 'stepOut', 'stackTrace', 'scopes', 'variables', 'evaluate'
           [not_supported(request)]
         when 'setBreakpoints'
@@ -101,6 +116,10 @@ module MRDebug
         when 'threads'
           [response(request, { 'threads' => [{ 'id' => 1, 'name' => 'main' }] })]
         when 'disconnect'
+          # Let the device run free rather than relying on connection-close
+          # (EOF) alone to unblock its LocalConsole loop -- the same
+          # already-proven run_mode! continue uses, not a new mechanism.
+          @remote.run_mode!
           [response(request), terminated_event]
         else
           [response(request, {}, success: false, message: "unsupported command: #{request['command']}")]
