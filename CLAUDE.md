@@ -67,9 +67,11 @@ This repo is a standalone mrbgem, not a full mruby/picoruby checkout. Point
 ```sh
 MRDEBUG_MRUBY_DIR=/path/to/mruby rake build       # build/host/bin/mruby
 MRDEBUG_MRUBY_DIR=/path/to/mruby rake test:unit   # mrbtest
+MRDEBUG_MRUBY_DIR=/path/to/mruby rake test:smoke  # e2e/smoke/* golden transcripts
+MRDEBUG_PICORUBY_DIR=/path/to/picoruby rake picoruby:smoke  # same, PicoRuby host build
 ```
 
-Both drive mruby's own `Rakefile` with `MRUBY_CONFIG=e2e/build_config.rb`
+`build`/`test:unit`/`test:smoke` drive mruby's own `Rakefile` with `MRUBY_CONFIG=e2e/build_config.rb`
 and `MRUBY_BUILD_DIR=<this repo>/build`, so nothing lands inside the mruby
 checkout itself. `e2e/build_config.rb` turns on `conf.enable_debug` (`mrbc
 -g`): without it, AOT-compiled `test/**/*.rb` has no line info, and the VM hook
@@ -90,6 +92,19 @@ binding.debugger
 ```sh
 printf 'n\np x\nc\n' | build/host/bin/mruby script.rb
 ```
+
+`picoruby:build`/`picoruby:smoke` drive a PicoRuby checkout's `Rakefile`
+the same way, with `e2e/picoruby_build_config.rb` and
+`MRUBY_BUILD_DIR=<this repo>/build/picoruby`. PicoRuby has no mrbtest (its
+Rakefile doesn't load mruby's `tasks/test.rake`), so the PicoRuby build is
+only checked by the smoke transcripts: `e2e/smoke/NAME.rb` run with
+`NAME.in` piped to `(prdb)`, stdout compared byte-for-byte with `NAME.out`
+(`MRDEBUG_SMOKE_UPDATE=1` regenerates them). Keep smoke scenarios out of
+anything whose output differs between the two VMs — e.g. stepping into
+core `mrblib` (`Integer#times`) or a `watch` that fires inside `Kernel#puts`
+both print VM-specific paths. `.github/workflows/ci.yml` runs all of this
+against pinned mruby/picoruby commits (`MRUBY_REF`/`PICORUBY_REF`), plus a
+`continue-on-error` run against each upstream's default branch.
 
 ### Two test layers, one runner
 

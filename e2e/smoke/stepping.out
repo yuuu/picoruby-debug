@@ -1,0 +1,13 @@
+Stop: stepping.rb:8
+(prdb) Stop: stepping.rb:9
+(prdb) Stop: stepping.rb:10
+(prdb) Stop: stepping.rb:1
+(prdb) 0
+(prdb) Stop: stepping.rb:2
+(prdb) Stop: stepping.rb:3
+(prdb) 0
+(prdb) Breakpoint 1 added at stepping.rb:3 if n == 2
+(prdb) Breakpoint 1: stepping.rb:3
+(prdb) 4
+(prdb) Deleted all breakpoints
+(prdb) total=5
