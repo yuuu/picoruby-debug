@@ -95,10 +95,7 @@ dbg_context_reset(mrb_state *mrb, struct mrb_context *c)
   c->ci->u.target_class = mrb->object_class;
   c->ci->stack = c->stbase;
   c->ci->vis = 1;
-#ifndef MRDEBUG_NO_SVARS
-  /* PicoRuby's mrb_context has no svars field (mrbgem.rake defines this). */
   if (c->svars) c->svars[0] = NULL;
-#endif
 
   size_t slots = DBG_RESET_SLOTS;
   if ((size_t)(c->stend - c->stbase) < slots) slots = (size_t)(c->stend - c->stbase);

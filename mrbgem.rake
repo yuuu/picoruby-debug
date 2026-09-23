@@ -25,8 +25,6 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
   end
 
   build.defines << 'MRB_USE_DEBUG_HOOK'
-  # PicoRuby's mrb_context has no svars field; see src/hook.c's guard.
-  build.defines << 'MRDEBUG_NO_SVARS' if picoruby
 
   add_mruby_gem.call('mruby-binding')
   add_mruby_gem.call('mruby-eval')

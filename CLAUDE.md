@@ -27,9 +27,10 @@ rather than exposing them under its own `MRUBY_ROOT/mrbgems`; the host
 CLI's socket/env needs go through PicoRuby's own `picoruby-socket`/
 `picoruby-env` instead of mainline `mruby-socket`/`mruby-env`, which
 would otherwise redefine the same class names and silently abort
-`mrb_open()`'s gem-init loop — see `tools/mrdebug/transport/socket.rb`),
-and `src/hook.c`'s `dbg_context_reset` guards a `svars` field PicoRuby's
-vendored mruby fork's `struct mrb_context` doesn't have.
+`mrb_open()`'s gem-init loop — see `tools/mrdebug/transport/socket.rb`).
+(An `MRDEBUG_NO_SVARS` guard around `dbg_context_reset`'s `c->svars` write
+used to be one of these fixes too; it was dropped once PicoRuby's vendored
+mruby picked up `svars`, so an older PicoRuby without it no longer builds.)
 
 The PICORB_VM_MRUBY **POSIX host** build (core plus the host CLI/DapBridge)
 is confirmed working this way. R2P2-ESP32 (ESP32-S3, PicoRuby/mruby VM)
@@ -197,13 +198,10 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
     context first. `mrb->c->prev` is `NULL` on the root context in plain
     mruby (unlike the old PicoRuby-oriented design, which assumed a
     non-root `prev` to borrow), which is exactly why this gem needs its own
-    context rather than reusing one. `dbg_context_reset`'s one field write to
-    `c->svars` is wrapped in `#ifndef MRDEBUG_NO_SVARS` — PicoRuby's vendored
-    mruby fork's `struct mrb_context` has no `svars` field at all (mainline
-    mruby added it later, for Fiber-scoped special variables), and
-    `mrbgem.rake` only defines `MRDEBUG_NO_SVARS` when
-    `build.picoruby?`, so mainline mruby's behavior here is unchanged (see
-    `docs/phase3-picoruby-host-verification.md`).
+    context rather than reusing one. `dbg_context_reset` also clears
+    `c->svars[0]` so a previous callback's special variables (`$~`, ...)
+    don't linger in the root frame; this needs a mruby (or PicoRuby-vendored
+    mruby) new enough to have `struct mrb_context`'s `svars` field.
   - **`invoke_on_line`** is the shared swap-call-restore sequence, used by
     both `hook_code_fetch` (bnd = nil) and `MRDebug::Hook.enter` (bnd =
     the caller's `Binding`, for the direct `binding.debugger` path — see
