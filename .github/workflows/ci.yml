@@ -23,9 +23,9 @@ jobs:
       matrix:
         upstream: [pinned, head]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: mruby/mruby
           ref: ${{ matrix.upstream == 'pinned' && env.MRUBY_REF || '' }}
@@ -54,9 +54,9 @@ jobs:
       matrix:
         upstream: [pinned, head]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: picoruby/picoruby
           ref: ${{ matrix.upstream == 'pinned' && env.PICORUBY_REF || '' }}
