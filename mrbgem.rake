@@ -3,55 +3,43 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
   spec.author  = 'Yuhei Okazaki'
   spec.summary = 'Debugger core for mruby'
 
-  spec.build.defines << 'MRB_USE_DEBUG_HOOK'
+  # picoruby? exists only on PicoRuby's MRuby::Build subclass.
+  build    = spec.build
+  picoruby = build.respond_to?(:picoruby?) && build.picoruby?
+  host     = build.host?
 
-  # PicoRuby vendors these gems outside MRUBY_ROOT, so core: can't find
-  # them there; gemdir: is PicoRuby's own stdlib.gembox pattern.
-  if spec.build.respond_to?(:picoruby?) && spec.build.picoruby?
-    mruby_dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
-    spec.add_dependency 'mruby-binding', gemdir: "#{mruby_dir}/mruby-binding"
-    spec.add_dependency 'mruby-eval', gemdir: "#{mruby_dir}/mruby-eval"
-  else
-    spec.add_dependency 'mruby-binding', core: 'mruby-binding'
-    spec.add_dependency 'mruby-eval', core: 'mruby-eval'
-  end
-
-  if spec.build.host?
-    if spec.build.respond_to?(:picoruby?) && spec.build.picoruby?
-      spec.add_dependency 'mruby-io', gemdir: "#{mruby_dir}/mruby-io"
-      # mruby-socket/-env collide with picoruby-socket/-env's own class defs.
-      spec.add_dependency 'picoruby-socket', core: 'picoruby-socket'
-      spec.add_dependency 'picoruby-env', core: 'picoruby-env'
+  # PicoRuby vendors mruby's gems outside MRUBY_ROOT/mrbgems.
+  add_mruby_gem = lambda do |name|
+    if picoruby
+      spec.add_dependency name, gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/#{name}"
     else
-      spec.add_dependency 'mruby-io', core: 'mruby-io'
-      spec.add_dependency 'mruby-socket', core: 'mruby-socket'
-      spec.add_dependency 'mruby-env', core: 'mruby-env'
+      spec.add_dependency name, core: name
     end
-    spec.rbfiles += Dir.glob("#{spec.dir}/tools/mrdebug/**/*.rb").sort
-
-    # Host CLI binary (docs/plan-phase4.md step 4). mruby's `spec.bins`
-    # convention (tasks/bin.rake) builds this from C sources under
-    # tools/mrdebug/*.c (a bare launcher only -- see that file's header);
-    # all real behavior lives in the Ruby just added above.
-    spec.bins << 'mrdebug'
   end
 
-  # A PicoRuby cross build (e.g. R2P2-ESP32) that isn't a host build at all
-  # still wants the TCP transport for a device-side listen_tcp/DapBridge
-  # target -- same picoruby-socket/-env picoruby? uses above, just without
-  # the CLI binary or Transport::Stdio (mruby-io), which a firmware build
-  # has no use for.
-  if spec.build.respond_to?(:picoruby?) && spec.build.picoruby? && !spec.build.host? &&
-     spec.build.respond_to?(:platform?) && spec.build.platform?(:esp32)
-    spec.add_dependency 'picoruby-socket', core: 'picoruby-socket'
-    spec.add_dependency 'picoruby-env', core: 'picoruby-env'
-    spec.rbfiles << "#{spec.dir}/tools/mrdebug/transport/socket.rb"
-    spec.rbfiles << "#{spec.dir}/tools/mrdebug/ui/local_console.rb"
-    spec.rbfiles << "#{spec.dir}/tools/mrdebug/device.rb"
+  # mruby-socket/-env collide with picoruby-socket/-env's class defs.
+  add_socket_and_env = lambda do
+    prefix = picoruby ? 'picoruby' : 'mruby'
+    spec.add_dependency "#{prefix}-socket", core: "#{prefix}-socket"
+    spec.add_dependency "#{prefix}-env", core: "#{prefix}-env"
   end
 
+  build.defines << 'MRB_USE_DEBUG_HOOK'
   # PicoRuby's mrb_context has no svars field; see src/hook.c's guard.
-  if spec.build.respond_to?(:picoruby?) && spec.build.picoruby?
-    spec.build.defines << 'MRDEBUG_NO_SVARS'
+  build.defines << 'MRDEBUG_NO_SVARS' if picoruby
+
+  add_mruby_gem.call('mruby-binding')
+  add_mruby_gem.call('mruby-eval')
+
+  if host
+    add_mruby_gem.call('mruby-io')
+    add_socket_and_env.call
+    spec.rbfiles += Dir.glob("#{spec.dir}/tools/mrdebug/**/*.rb").sort
+    spec.bins << 'mrdebug'
+  elsif picoruby
+    # Firmware: device-side socket transport only (no CLI, no stdio).
+    add_socket_and_env.call
+    spec.rbfiles += %w[transport/socket.rb ui/local_console.rb device.rb]
+                      .map { |f| "#{spec.dir}/tools/mrdebug/#{f}" }
   end
 end
