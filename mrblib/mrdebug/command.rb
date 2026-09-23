@@ -253,7 +253,9 @@ module MRDebug
       return ['Source listing is not available (no filesystem access in this build)'] unless defined?(File)
 
       text = begin
-        File.read(file)
+        # Not File.read -- PicoRuby's picoruby-vfs File class has no such
+        # class method, only the instance #read File.open yields here.
+        File.open(file) { |f| f.read }
       rescue Exception
         nil
       end

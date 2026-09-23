@@ -345,8 +345,11 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
     `list`'s only device-specific need is *reading bytes off a path
     already known to Ruby* (`session.file`) — unlike `Transport`, there's
     no protocol or session-lifetime state to own, so a DI seam would add a
-    layer without a matching axis of variation to justify it. `File.read`
-    (not `File.readlines`, which mruby-io's `File` doesn't define) plus a
+    layer without a matching axis of variation to justify it. `File.open(file)
+    { |f| f.read }` (not `File.read`, which PicoRuby's `picoruby-vfs` `File`
+    class has no class method for — confirmed via a real `Cannot open` on
+    R2P2-ESP32 hardware, only `#read` as an instance method; not
+    `File.readlines` either, which mruby-io's `File` doesn't define) plus a
     hand-rolled `"\n"`-split (`String#split` is core; `#each_line`/`#lines`
     are `mruby-string-ext`, unsafe under `mrbtest` per above) turns the
     file into a 1-indexed line array; `LIST_CONTEXT` (5) lines on either
