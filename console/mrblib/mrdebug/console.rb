@@ -11,7 +11,7 @@ module MRDebug
         # mounted yet during gem_init, and a require failing there silently
         # aborts every later gem_init (see CLAUDE.md's mrb_open() note).
         require 'editor'
-        require 'io-console'
+        require 'io/console'
         @editor = Class.new(Editor::Line) do
           def initialize
             # Skip Editor::Base#initialize's terminal-size probe: on
