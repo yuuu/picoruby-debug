@@ -225,7 +225,7 @@ MRDEBUG_MRUBY_DIR=/path/to/an/mruby/checkout rake test:smoke  # spec/ (RSpec) ag
 MRDEBUG_PICORUBY_DIR=/path/to/a/picoruby/checkout rake picoruby:smoke  # same, under PicoRuby's host build
 ```
 
-`e2e/build_config.rb` is the build config those tasks drive; it turns on
+`test/build_config/mruby.rb` is the build config those tasks drive; it turns on
 `conf.enable_debug` (`mrbc -g`), which `test/e2e/*.rb` needs for the VM hook
 to see line numbers in AOT-compiled test code — a plain `bin/mruby
 script.rb` run doesn't need this, since it compiles at runtime.
@@ -239,7 +239,7 @@ on top of that: each example writes a small script that hits
 `binding.debugger`, pipes `(prdb)` commands into it under the built binary,
 and checks each command's output. This is the only check the PicoRuby
 build gets: PicoRuby's Rakefile has no mrbtest, so `test:unit` can't run
-there. `picoruby:build` uses `e2e/picoruby_build_config.rb` (a
+there. `picoruby:build` uses `test/build_config/picoruby.rb` (a
 `PICORB_VM_MRUBY` POSIX host build) and puts its artifacts under
 `build/picoruby/`.
 

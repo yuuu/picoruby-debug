@@ -26,6 +26,10 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
 
   build.defines << 'MRB_USE_DEBUG_HOOK'
 
+  # test/build_config/ holds the rake build configs this repo's Rakefile
+  # drives mruby/PicoRuby with, not mrbtest files.
+  spec.test_rbfiles = Dir["#{spec.dir}/test/**/*.rb"].sort - Dir["#{spec.dir}/test/build_config/**/*.rb"]
+
   add_mruby_gem.call('mruby-binding')
   add_mruby_gem.call('mruby-eval')
 

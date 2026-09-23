@@ -7,11 +7,11 @@
 # and MRDEBUG_PICORUBY_DIR at a picoruby checkout for the picoruby:* tasks.
 #
 MRDEBUG_ROOT = __dir__
-BUILD_CONFIG = File.join(MRDEBUG_ROOT, 'e2e', 'build_config.rb')
+BUILD_CONFIG = File.join(MRDEBUG_ROOT, 'test', 'build_config', 'mruby.rb')
 BUILD_DIR    = File.join(MRDEBUG_ROOT, 'build')
 MRUBY_BIN    = File.join(BUILD_DIR, 'host', 'bin', 'mruby')
 
-PICORUBY_BUILD_CONFIG = File.join(MRDEBUG_ROOT, 'e2e', 'picoruby_build_config.rb')
+PICORUBY_BUILD_CONFIG = File.join(MRDEBUG_ROOT, 'test', 'build_config', 'picoruby.rb')
 PICORUBY_BUILD_DIR    = File.join(BUILD_DIR, 'picoruby')
 PICORUBY_BIN          = File.join(PICORUBY_BUILD_DIR, 'host', 'bin', 'picoruby')
 
