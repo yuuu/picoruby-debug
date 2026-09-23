@@ -17,7 +17,7 @@ assert('LocalConsole, driven by a Loopback transport, evaluates print and resume
   with_session(session) do
     x = 41
     line = __LINE__; binding.debugger
-    x # keep x reachable after the stop, for symmetry with other e2e files
+    x # keep x reachable after the stop, for symmetry with other integration files
   end
 
   assert_equal [
