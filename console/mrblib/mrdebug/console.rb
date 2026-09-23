@@ -1,6 +1,3 @@
-require 'editor'
-require 'io-console'
-
 module MRDebug
   module UI
     # The (prdb) prompt read directly off the device's own console (raw
@@ -10,6 +7,11 @@ module MRDebug
     # driven and host-only.
     class Console < Base
       def initialize
+        # Deferred to first use, not gem-init time: the filesystem isn't
+        # mounted yet during gem_init, and a require failing there silently
+        # aborts every later gem_init (see CLAUDE.md's mrb_open() note).
+        require 'editor'
+        require 'io-console'
         @editor = Class.new(Editor::Line) do
           def initialize
             # Skip Editor::Base#initialize's terminal-size probe: on
