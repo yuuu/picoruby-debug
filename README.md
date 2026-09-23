@@ -221,6 +221,8 @@ itself) is only compiled into `build.host?` builds; the core (`MRDebug`,
 ```sh
 MRDEBUG_MRUBY_DIR=/path/to/an/mruby/checkout rake build       # build/host/bin/mruby
 MRDEBUG_MRUBY_DIR=/path/to/an/mruby/checkout rake test:unit   # mruby's own assert framework
+MRDEBUG_MRUBY_DIR=/path/to/an/mruby/checkout rake test:smoke  # spec/ (RSpec) against build/host/bin/mruby
+MRDEBUG_PICORUBY_DIR=/path/to/a/picoruby/checkout rake picoruby:smoke  # same, under PicoRuby's host build
 ```
 
 `e2e/build_config.rb` is the build config those tasks drive; it turns on
@@ -230,7 +232,20 @@ script.rb` run doesn't need this, since it compiles at runtime.
 
 `test/*.rb` (plain `assert`) and `test/e2e/*.rb` (drives the real VM hook,
 `binding.debugger`, and the command layer together) both run under
-`rake test:unit`; there's no separate transcript/E2E harness.
+`rake test:unit`.
+
+`spec/` (RSpec, run under CRuby — `bundle install` first) is a smoke layer
+on top of that: each example writes a small script that hits
+`binding.debugger`, pipes `(prdb)` commands into it under the built binary,
+and checks each command's output. This is the only check the PicoRuby
+build gets: PicoRuby's Rakefile has no mrbtest, so `test:unit` can't run
+there. `picoruby:build` uses `e2e/picoruby_build_config.rb` (a
+`PICORB_VM_MRUBY` POSIX host build) and puts its artifacts under
+`build/picoruby/`.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs both against pinned
+mruby/picoruby commits, plus a non-blocking run against each upstream's
+default branch.
 
 ## Roadmap
 

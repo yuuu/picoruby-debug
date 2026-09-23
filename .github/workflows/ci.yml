@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main, rewrite/mrdebug-core]
+  pull_request:
+  workflow_dispatch:
+
+# Known-good upstream commits. The "head" matrix entries below also build
+# against each upstream's default branch, without failing the workflow, so
+# a breaking upstream change shows up before these pins are bumped.
+env:
+  MRUBY_REF: 2a4167e0868265c58a3cf6a94770c1f633ee1ae7
+  PICORUBY_REF: 65b7ae6256faa2e53aa0cf8249c8ad5f1cd86327
+
+jobs:
+  mruby:
+    name: mruby (host) / ${{ matrix.upstream }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.upstream == 'head' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        upstream: [pinned, head]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          repository: mruby/mruby
+          ref: ${{ matrix.upstream == 'pinned' && env.MRUBY_REF || '' }}
+          path: vendor/mruby
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Unit tests (mrbtest)
+        run: bundle exec rake test:unit
+        env:
+          MRDEBUG_MRUBY_DIR: vendor/mruby
+
+      - name: Smoke specs (RSpec)
+        run: bundle exec rake test:smoke
+        env:
+          MRDEBUG_MRUBY_DIR: vendor/mruby
+
+  picoruby:
+    name: picoruby (host) / ${{ matrix.upstream }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.upstream == 'head' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        upstream: [pinned, head]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          repository: picoruby/picoruby
+          ref: ${{ matrix.upstream == 'pinned' && env.PICORUBY_REF || '' }}
+          path: vendor/picoruby
+
+      # Only what a POSIX host build needs -- a recursive init would also pull
+      # pico-sdk (and its btstack/tinyusb/mbedtls/... submodules).
+      - name: Fetch PicoRuby submodules
+        working-directory: vendor/picoruby
+        run: |
+          git submodule update --init --depth 1 \
+            mrbgems/mruby-bin-mrbc \
+            mrbgems/mruby-compiler \
+            mrbgems/picoruby-mruby/lib/mruby \
+            mrbgems/picoruby-machine/lib/estalloc \
+            mrbgems/picoruby-regexp_light/lib/regex_light
+          git -C mrbgems/mruby-compiler submodule update --init --depth 1
+          git -C mrbgems/picoruby-mruby/lib/mruby submodule update --init --depth 1 \
+            mrbgems/mruby-compiler/lib/prism
+
+      - name: Install OpenSSL headers
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Build and smoke specs (RSpec)
+        run: bundle exec rake picoruby:smoke
+        env:
+          MRDEBUG_PICORUBY_DIR: vendor/picoruby
