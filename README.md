@@ -226,11 +226,11 @@ MRDEBUG_PICORUBY_DIR=/path/to/a/picoruby/checkout rake picoruby:smoke  # same, u
 ```
 
 `test/build_config/mruby.rb` is the build config those tasks drive; it turns on
-`conf.enable_debug` (`mrbc -g`), which `test/e2e/*.rb` needs for the VM hook
+`conf.enable_debug` (`mrbc -g`), which `test/integration/*.rb` needs for the VM hook
 to see line numbers in AOT-compiled test code — a plain `bin/mruby
 script.rb` run doesn't need this, since it compiles at runtime.
 
-`test/*.rb` (plain `assert`) and `test/e2e/*.rb` (drives the real VM hook,
+`test/*.rb` (plain `assert`) and `test/integration/*.rb` (drives the real VM hook,
 `binding.debugger`, and the command layer together) both run under
 `rake test:unit`.
 

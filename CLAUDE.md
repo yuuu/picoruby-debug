@@ -76,7 +76,7 @@ MRDEBUG_PICORUBY_DIR=/path/to/picoruby rake picoruby:smoke  # same, PicoRuby hos
 and `MRUBY_BUILD_DIR=<this repo>/build`, so nothing lands inside the mruby
 checkout itself. `test/build_config/mruby.rb` turns on `conf.enable_debug` (`mrbc
 -g`): without it, AOT-compiled `test/**/*.rb` has no line info, and the VM hook
-can never be observed firing from a `test/e2e/*.rb` assertion (`if (line <
+can never be observed firing from a `test/integration/*.rb` assertion (`if (line <
 0) return;` in `src/hook.c` bails immediately) — a plain `bin/mruby
 script.rb` run doesn't need this, since it compiles at runtime and always
 emits debug info.
@@ -116,7 +116,7 @@ against pinned mruby/picoruby commits (`MRUBY_REF`/`PICORUBY_REF`), plus a
 tests: `mrbgem.rake` subtracts them from `spec.test_rbfiles`, since mruby
 otherwise compiles every `test/**/*.rb` into mrbtest.
 
-- `test/**/*.rb` (outside `test/e2e/` and `test/build_config/`) — plain `assert`, pure-Ruby logic, no
+- `test/**/*.rb` (outside `test/integration/` and `test/build_config/`) — plain `assert`, pure-Ruby logic, no
   VM hook involved. Mirrors the source tree being tested:
   `test/mrblib/mrdebug/*.rb` for `mrblib/mrdebug/*.rb`,
   `test/tools/mrdebug/**/*.rb` for `tools/mrdebug/**/*.rb`. `Session`'s
@@ -130,7 +130,7 @@ otherwise compiles every `test/**/*.rb` into mrbtest.
   alias it back in the `ensure`) — confirmed by a real crash this mistake
   caused once a later test's real `next_mode!` call found `frame_count`
   gone entirely.
-- `test/e2e/*.rb` — also plain `assert`, but exercises the real VM hook,
+- `test/integration/*.rb` — also plain `assert`, but exercises the real VM hook,
   `binding.debugger`, and the command layer together (ported from what used
   to be ad hoc `e2e/scenarios/*.rb` scripts checked by eye; that approach
   once let a real bug — a wrong callback arity — go unnoticed for several
