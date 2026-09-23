@@ -7,7 +7,10 @@ module MRDebug
     # socket; #handle_message wraps that with Json for raw text. stepOut/
     # scopes/variables/evaluate aren't handled yet -- @remote has no way
     # to forward a frame's locals/eval over the wire, only its backtrace
-    # (stackTrace, via #backtrace). continue/next/stepIn only ack
+    # (stackTrace, via #backtrace) and raw file content (source, via
+    # #source) -- a device path never resolves as a local file, so VS
+    # Code always needs the latter to actually show the source.
+    # continue/next/stepIn only ack
     # here; the *next* stop (or termination) is reported later via
     # #stopped_notification/#terminated_notification, once whoever is
     # actually watching @remote (DapServer, for a real device) observes it
@@ -112,6 +115,8 @@ module MRDebug
           [response(request)]
         when 'stackTrace'
           [response(request, stack_trace_body)]
+        when 'source'
+          [response(request, source_body(request))]
         when 'stepOut', 'scopes', 'variables', 'evaluate'
           [not_supported(request)]
         when 'setBreakpoints'
@@ -173,6 +178,15 @@ module MRDebug
           i += 1
         end
         { 'stackFrames' => stack_frames, 'totalFrames' => stack_frames.size }
+      end
+
+      # VS Code falls back to a `source` request whenever it can't open a
+      # stackTrace frame's `source.path` as a local file (the device's own
+      # path, e.g. "./dap_test.rb", never exists on the host) -- @remote's
+      # `source` fetches it over the wire instead (device: `cat`).
+      def source_body(request)
+        path = ((request['arguments'] || {})['source'] || {})['path']
+        { 'content' => @remote.source(path) }
       end
 
       def basename(path)

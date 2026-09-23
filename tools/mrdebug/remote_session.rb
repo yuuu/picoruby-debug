@@ -36,6 +36,13 @@ module MRDebug
       @session.backtrace
     end
 
+    # Raw file content, via the same `cat` Command a real DeviceLink would
+    # send over the wire (not a direct File read -- @session is I/O-free).
+    def source(path)
+      out, = MRDebug::Command.dispatch(@session, "cat #{path}")
+      out.join("\n")
+    end
+
     def add_display(expr)
       @session.add_display(expr)
     end

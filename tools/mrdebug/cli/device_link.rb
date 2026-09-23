@@ -104,6 +104,14 @@ module MRDebug
         true
       end
 
+      # Raw content of `path` on the device (its `cat` command) -- for
+      # DAP's `source` request, when VS Code has no local copy of a file
+      # it only knows by the device's own path.
+      def source(path)
+        lines = command("cat #{path}")
+        lines.join("\n")
+      end
+
       # [[file, line], ...] from the device's `bt` command, parsing
       # "#N file:line" lines -- same shape as RemoteSession#backtrace's
       # direct Session#backtrace call, so DapBridge can treat either

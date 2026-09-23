@@ -372,3 +372,31 @@ assert('Command.dispatch bt/backtrace/where all report the same backtrace, inner
 ensure
   MRDebug::Hook.uninstall
 end
+
+assert('Command.dispatch cat with no current position reports it') do
+  session = MRDebug::Session.new
+  out, action = MRDebug::Command.dispatch(session, 'cat')
+  assert_equal :stay, action
+  assert_equal ['No current position (not stopped anywhere yet)'], out
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch cat with no argument dumps the whole current file, unwindowed') do
+  session = MRDebug::Session.new
+  session.on_line(__FILE__, 1, binding)
+  out, action = MRDebug::Command.dispatch(session, 'cat')
+  assert_equal :stay, action
+  assert_equal '# Every test here creates a Session, which registers itself with', out.first
+  assert_true out.size > 20 # this test file is well past LIST_CONTEXT's window
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch cat <file> reports a read failure for a nonexistent file') do
+  session = MRDebug::Session.new
+  out, _ = MRDebug::Command.dispatch(session, 'cat nonexistent-file-xyz.rb')
+  assert_equal ['Cannot open nonexistent-file-xyz.rb'], out
+ensure
+  MRDebug::Hook.uninstall
+end

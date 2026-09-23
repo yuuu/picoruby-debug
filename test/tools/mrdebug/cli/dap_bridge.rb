@@ -173,6 +173,41 @@ ensure
   MRDebug::Hook.uninstall
 end
 
+assert('DapBridge source fetches a real file VS Code has no local copy of, by the path a stackTrace frame reported') do
+  session = MRDebug::Session.new
+  session.on_line(__FILE__, 1, binding)
+  remote = MRDebug::RemoteSession.new(session)
+  bridge = MRDebug::CLI::DapBridge.new(remote)
+  bridge.handle('seq' => 1, 'type' => 'request', 'command' => 'configurationDone')
+
+  request = {
+    'seq' => 2, 'type' => 'request', 'command' => 'source',
+    'arguments' => { 'source' => { 'path' => __FILE__ } },
+  }
+  msgs = bridge.handle(request)
+
+  assert_true msgs[0]['success']
+  assert_true msgs[0]['body']['content'].include?('DapBridge source fetches a real file')
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('DapBridge source reports a read failure for a path that does not exist on the device') do
+  bridge = MRDebug::CLI::DapBridge.new(dap_bridge_test_remote)
+  bridge.handle('seq' => 1, 'type' => 'request', 'command' => 'configurationDone')
+
+  request = {
+    'seq' => 2, 'type' => 'request', 'command' => 'source',
+    'arguments' => { 'source' => { 'path' => '/device/foo.rb' } },
+  }
+  msgs = bridge.handle(request)
+
+  assert_true msgs[0]['success'] # the DAP request itself succeeds
+  assert_equal 'Cannot open /device/foo.rb', msgs[0]['body']['content']
+ensure
+  MRDebug::Hook.uninstall
+end
+
 assert('DapBridge reports an unsupported command instead of raising') do
   bridge = MRDebug::CLI::DapBridge.new(dap_bridge_test_remote)
   bridge.handle('seq' => 1, 'type' => 'request', 'command' => 'configurationDone')

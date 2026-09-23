@@ -9,6 +9,7 @@ module MRDebug
       'l' => :list, 'list' => :list,
       'p' => :print, 'print' => :print,
       'bt' => :backtrace, 'backtrace' => :backtrace, 'where' => :backtrace,
+      'cat' => :cat,
       'display' => :display,
       'watch' => :watch,
     }
@@ -40,6 +41,8 @@ module MRDebug
         [print_cmd(session, arg), :stay]
       when :backtrace
         [backtrace_cmd(session), :stay]
+      when :cat
+        [cat_cmd(session, arg), :stay]
       when :display
         [display_cmd(session, arg), :stay]
       when :watch
@@ -255,13 +258,7 @@ module MRDebug
     def self.source_listing(file, line)
       return ['Source listing is not available (no filesystem access in this build)'] unless defined?(File)
 
-      text = begin
-        # Not File.read -- PicoRuby's picoruby-vfs File class has no such
-        # class method, only the instance #read File.open yields here.
-        File.open(file) { |f| f.read }
-      rescue Exception
-        nil
-      end
+      text = read_file(file)
       return ["Cannot open #{file}"] if text.nil?
 
       # Not String#lines/#each_line -- mruby-string-ext, unsafe under mrbtest.
@@ -281,6 +278,14 @@ module MRDebug
         i += 1
       end
       out
+    end
+
+    # Not File.read -- PicoRuby's picoruby-vfs File class has no such class
+    # method, only the instance #read File.open yields here. nil on failure.
+    def self.read_file(file)
+      File.open(file) { |f| f.read }
+    rescue Exception
+      nil
     end
 
     def self.watch_cmd(session, arg)
@@ -313,6 +318,19 @@ module MRDebug
       lines = []
       frames.each_with_index { |(file, line), i| lines << "##{i} #{file}:#{line}" }
       lines
+    end
+
+    # Unlike list_cmd, this is the whole file, unwindowed and with no line
+    # numbers -- DapBridge's `source` handling wants raw source text (a
+    # remote file VS Code has no local copy of), not a human-facing listing.
+    def self.cat_cmd(session, arg)
+      file = blank?(arg) ? session.file : trim(arg)
+      return ['No current position (not stopped anywhere yet)'] if file.nil?
+      return ['Source listing is not available (no filesystem access in this build)'] unless defined?(File)
+
+      text = read_file(file)
+      return ["Cannot open #{file}"] if text.nil?
+      text.split("\n")
     end
   end
 end
