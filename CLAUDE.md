@@ -67,7 +67,7 @@ This repo is a standalone mrbgem, not a full mruby/picoruby checkout. Point
 ```sh
 MRDEBUG_MRUBY_DIR=/path/to/mruby rake build       # build/host/bin/mruby
 MRDEBUG_MRUBY_DIR=/path/to/mruby rake test:unit   # mrbtest
-MRDEBUG_MRUBY_DIR=/path/to/mruby rake test:smoke  # e2e/smoke/* golden transcripts
+MRDEBUG_MRUBY_DIR=/path/to/mruby rake test:smoke  # spec/ (RSpec) smoke specs
 MRDEBUG_PICORUBY_DIR=/path/to/picoruby rake picoruby:smoke  # same, PicoRuby host build
 ```
 
@@ -97,9 +97,12 @@ printf 'n\np x\nc\n' | build/host/bin/mruby script.rb
 the same way, with `e2e/picoruby_build_config.rb` and
 `MRUBY_BUILD_DIR=<this repo>/build/picoruby`. PicoRuby has no mrbtest (its
 Rakefile doesn't load mruby's `tasks/test.rake`), so the PicoRuby build is
-only checked by the smoke transcripts: `e2e/smoke/NAME.rb` run with
-`NAME.in` piped to `(prdb)`, stdout compared byte-for-byte with `NAME.out`
-(`MRDEBUG_SMOKE_UPDATE=1` regenerates them). Keep smoke scenarios out of
+only checked by the smoke specs: `spec/smoke_spec.rb` (RSpec, under CRuby
+via `bundle exec`; the rake tasks pass the built binary as
+`MRDEBUG_SMOKE_BIN`) writes each scenario's script inline to a tmpdir, pipes
+commands into `(prdb)`, and compares `[command, output]` pairs — the
+transcript split on the `(prdb) ` prompt — so a failure's diff points at the
+command whose output changed. Keep smoke scenarios away from
 anything whose output differs between the two VMs — e.g. stepping into
 core `mrblib` (`Integer#times`) or a `watch` that fires inside `Kernel#puts`
 both print VM-specific paths. `.github/workflows/ci.yml` runs all of this

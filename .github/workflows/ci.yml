@@ -34,14 +34,15 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
+          bundler-cache: true
 
       - name: Unit tests (mrbtest)
-        run: rake test:unit
+        run: bundle exec rake test:unit
         env:
           MRDEBUG_MRUBY_DIR: vendor/mruby
 
-      - name: Smoke tests
-        run: rake test:smoke
+      - name: Smoke specs (RSpec)
+        run: bundle exec rake test:smoke
         env:
           MRDEBUG_MRUBY_DIR: vendor/mruby
 
@@ -83,8 +84,9 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
+          bundler-cache: true
 
-      - name: Build and smoke tests
-        run: rake picoruby:smoke
+      - name: Build and smoke specs (RSpec)
+        run: bundle exec rake picoruby:smoke
         env:
           MRDEBUG_PICORUBY_DIR: vendor/picoruby
