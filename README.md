@@ -97,8 +97,8 @@ MRDEBUG_PORT=4711 mruby script.rb       # or MRDEBUG_SOCK=/tmp/mrdebug.sock
 ```
 
 ```sh
-mrdebug                                  # reads MRDEBUG_PORT / MRDEBUG_SOCK
-mrdebug --host 192.168.0.10 --port 4711  # e.g. a board on the network
+mrdbg                                    # reads MRDEBUG_PORT / MRDEBUG_SOCK
+mrdbg --host 192.168.0.10 --port 4711    # e.g. a board on the network
 ```
 
 A script (or device firmware) can also start listening explicitly:
@@ -110,10 +110,10 @@ binding.debugger
 
 ### Connecting from VS Code
 
-`mrdebug` can bridge a DAP client to a listening device. Start the bridge:
+`mrdbg` can bridge a DAP client to a listening device. Start the bridge:
 
 ```sh
-mrdebug --host 192.168.0.10 --port 4711 --dap-port 12345
+mrdbg --host 192.168.0.10 --port 4711 --dap-port 12345
 ```
 
 Then attach with [vscode-rdbg](https://marketplace.visualstudio.com/items?itemName=KoichiSasada.vscode-rdbg):
@@ -122,7 +122,7 @@ Then attach with [vscode-rdbg](https://marketplace.visualstudio.com/items?itemNa
 {
   "type": "rdbg",
   "request": "attach",
-  "name": "Attach to mrdebug",
+  "name": "Attach to mrdbg",
   "debugPort": "localhost:12345"
 }
 ```

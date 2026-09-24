@@ -1,6 +1,6 @@
 module MRDebug
   # Fallback for a port that's wanted but unspecified (bare listen_tcp,
-  # `mrdebug` with no args). Matches rdbg's convention.
+  # `mrdbg` with no args). Matches rdbg's convention.
   DEFAULT_PORT = 4711
 
   # Opens a Session, blocks for the CLI to connect, wires it to LocalConsole.

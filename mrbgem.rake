@@ -37,7 +37,8 @@ MRuby::Gem::Specification.new('mrdebug') do |spec|
     add_mruby_gem.call('mruby-io')
     add_socket_and_env.call
     spec.rbfiles += Dir.glob("#{spec.dir}/tools/mrdebug/**/*.rb").sort
-    spec.bins << 'mrdebug'
+    # The bin's C launcher must live in tools/mrdbg/ (mruby's convention).
+    spec.bins << 'mrdbg'
   elsif picoruby
     # Firmware: device-side socket transport only (no CLI, no stdio).
     add_socket_and_env.call

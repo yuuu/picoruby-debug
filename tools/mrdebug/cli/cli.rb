@@ -9,7 +9,7 @@ module MRDebug
       if options.help
         transport.write("#{usage}\n")
       elsif options.version
-        transport.write("mrdebug (interim build -- no wire protocol yet)\n")
+        transport.write("mrdbg (interim build -- no wire protocol yet)\n")
       elsif options.port && options.dap_port
         connect_dap(options, transport)
       elsif options.port
@@ -30,7 +30,7 @@ module MRDebug
       end
     end
 
-    # `mrdebug` with no args: MRDEBUG_SOCK, else MRDEBUG_PORT, else 4711.
+    # `mrdbg` with no args: MRDEBUG_SOCK, else MRDEBUG_PORT, else 4711.
     def self.connect_auto(transport)
       sock = MRDebug.default_sock
       if sock
@@ -41,7 +41,7 @@ module MRDebug
     end
 
     def self.usage
-      "Usage: mrdebug [file[:line]]\n" \
+      "Usage: mrdbg [file[:line]]\n" \
       "  (no args)         connect to MRDEBUG_SOCK, else 127.0.0.1:MRDEBUG_PORT (#{MRDebug::DEFAULT_PORT})\n" \
       "  --port PORT        connect to a device listening on 127.0.0.1:PORT\n" \
       "  --host HOST --port PORT   connect to a device listening on HOST:PORT\n" \

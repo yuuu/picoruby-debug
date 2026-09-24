@@ -46,7 +46,7 @@ assert('CLI.start --help writes usage and never opens a Session') do
   transport = MRDebug::Transport::Loopback.new
   MRDebug::CLI.start(['--help'], transport)
   assert_equal 1, transport.output.size
-  assert_true transport.output[0].include?('Usage: mrdebug')
+  assert_true transport.output[0].include?('Usage: mrdbg')
 ensure
   MRDebug::Hook.uninstall
 end
