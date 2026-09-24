@@ -1,13 +1,13 @@
 module MRDebug
   module CLI
-    # Drives a device's existing plain-text (prdb) protocol (LocalConsole +
+    # Drives a device's existing plain-text (mrdbg) protocol (LocalConsole +
     # Command.dispatch, unchanged -- see tools/mrdebug/ui/local_console.rb)
     # as DapBridge's @remote, over a real Transport::TCP/Unix connection.
     # PROMPT never gets a trailing newline, which is exactly what makes it
     # usable as an end-of-response marker: everything buffered before the
     # first PROMPT match is that response's output lines.
     class DeviceLink
-      PROMPT = '(prdb) '.freeze
+      PROMPT = '(mrdbg) '.freeze
 
       # Not Struct.new -- its dynamically-defined accessors have caused a
       # presym mismatch under mrbtest elsewhere in this gem (see CLAUDE.md's

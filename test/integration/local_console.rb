@@ -22,9 +22,9 @@ assert('LocalConsole, driven by a Loopback transport, evaluates print and resume
 
   assert_equal [
     "Stop: #{__FILE__}:#{line}\n",
-    '(prdb) ',
+    '(mrdbg) ',
     "41\n",
-    '(prdb) ',
+    '(mrdbg) ',
   ], transport.output
 ensure
   MRDebug::Hook.uninstall
@@ -40,7 +40,7 @@ assert('LocalConsole treats a nil #gets (transport EOF/disconnect) as continue, 
     line = __LINE__; binding.debugger
   end
 
-  assert_equal ["Stop: #{__FILE__}:#{line}\n", '(prdb) '], transport.output
+  assert_equal ["Stop: #{__FILE__}:#{line}\n", '(mrdbg) '], transport.output
 ensure
   MRDebug::Hook.uninstall
 end
@@ -68,13 +68,13 @@ assert('LocalConsole processes a whole piped-in command sequence across a next a
 
   assert_equal [
     "Stop: #{__FILE__}:#{local_console_next_debugger_line}\n",
-    '(prdb) ',
+    '(mrdbg) ',
     "7\n",
-    '(prdb) ',
+    '(mrdbg) ',
     "Stop: #{__FILE__}:#{local_console_next_call_line}\n",
-    '(prdb) ',
+    '(mrdbg) ',
     "7\n",
-    '(prdb) ',
+    '(mrdbg) ',
   ], transport.output
 ensure
   MRDebug::Hook.uninstall
@@ -104,7 +104,7 @@ assert('LocalConsole up/down/frame select a caller frame, and print evaluates ag
   end
   assert_equal 21, result
 
-  out = transport.output.reject { |l| l == '(prdb) ' }
+  out = transport.output.reject { |l| l == '(mrdbg) ' }
   assert_equal "Stop: #{__FILE__}:#{local_console_frame_inner_line}\n", out[0]
   assert_equal "20\n", out[1]
   assert_equal "#1 #{__FILE__}:#{local_console_frame_outer_line}\n", out[2]

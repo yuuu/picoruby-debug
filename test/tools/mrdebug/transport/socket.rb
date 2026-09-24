@@ -14,9 +14,9 @@ assert('Transport::TCP.connect reaches a listening TCPServer; Socket#gets/#write
   client.write("break foo.rb:1\n")
   assert_equal 'break foo.rb:1', device.gets
 
-  device.write("(prdb) ")
+  device.write("(mrdbg) ")
   device.write("Breakpoint 1 added\n")
-  assert_equal '(prdb) Breakpoint 1 added', client.gets
+  assert_equal '(mrdbg) Breakpoint 1 added', client.gets
 ensure
   client.close if client
   device.close if device

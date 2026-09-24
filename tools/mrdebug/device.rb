@@ -18,7 +18,7 @@ module MRDebug
     session
   end
 
-  # The (prdb) prompt on this process's own STDIN/STDOUT -- no socket, no CLI.
+  # The (mrdbg) prompt on this process's own STDIN/STDOUT -- no socket, no CLI.
   def self.attach_stdio
     session = Session.new
     session.ui = UI::LocalConsole.new

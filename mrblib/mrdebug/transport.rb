@@ -1,6 +1,6 @@
 module MRDebug
   module Transport
-    # The (prdb) prompt's I/O contract -- not a wire protocol (DAP, rdbg, ...).
+    # The (mrdbg) prompt's I/O contract -- not a wire protocol (DAP, rdbg, ...).
     class Base
       def gets
         raise NotImplementedError, "#{self.class} must implement #gets"

@@ -2,7 +2,7 @@ module MRDebug
   module CLI
     # Bridges a Content-Length-framed DAP client (e.g. vscode-rdbg's
     # "attach", pointed at this server's port) to a device already
-    # connected via DeviceLink's plain-text (prdb) protocol. Route (b) from
+    # connected via DeviceLink's plain-text (mrdbg) protocol. Route (b) from
     # the design notes: no JSON/DAP ever reaches the device, only this
     # host-side process speaks it. One client at a time; #run blocks for
     # its whole lifetime.

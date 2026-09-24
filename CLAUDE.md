@@ -37,7 +37,7 @@ PicoRuby's mruby/c VM is unsupported (`MRB_USE_DEBUG_HOOK`/
 walking the raw callinfo stack, and safely getting control from the VM's
 per-instruction dispatch. That's `src/hook.c` (VM hook mechanics) and
 `src/frame.c` (frame walking) — the only two C files in this gem. Everything
-else (breakpoint matching, session state, the command parser, the `(prdb)`
+else (breakpoint matching, session state, the command parser, the `(mrdbg)`
 prompt) is Ruby. When adding a feature, assume it belongs in Ruby unless you
 can point at a specific thing only C can do (as the frame API's `mrb_context`
 walking or the VM hook's context swap need to).
@@ -84,8 +84,8 @@ Rakefile doesn't load mruby's `tasks/test.rake`), so the PicoRuby build is
 only checked by the smoke specs: `spec/smoke_spec.rb` (RSpec, under CRuby
 via `bundle exec`; the rake tasks pass the built binary as
 `MRDEBUG_SMOKE_BIN`) writes each scenario's script inline to a tmpdir, pipes
-commands into `(prdb)`, and compares `[command, output]` pairs — the
-transcript split on the `(prdb) ` prompt — so a failure's diff points at the
+commands into `(mrdbg)`, and compares `[command, output]` pairs — the
+transcript split on the `(mrdbg) ` prompt — so a failure's diff points at the
 command whose output changed. Keep smoke scenarios away from
 anything whose output differs between the two VMs — e.g. stepping into
 core `mrblib` (`Integer#times`) or a `watch` that fires inside `Kernel#puts`
@@ -151,7 +151,7 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   `MRB_USE_DEBUG_HOOK` (build-wide — see below). Depends only on mruby core
   gems (`mruby-binding`, `mruby-eval`); `mruby-io`, `mruby-socket`,
   `mruby-env` (the last only for `MRDEBUG_PORT`/`MRDEBUG_SOCK` in
-  `MRDebug.autostart`), and `tools/mrdebug/**/*.rb` (the `(prdb)` prompt)
+  `MRDebug.autostart`), and `tools/mrdebug/**/*.rb` (the `(mrdbg)` prompt)
   are added only under `spec.build.host?`, so a firmware build never sees
   the console UI's I/O dependency at all — the core (`MRDebug`, `Session`,
   `Command`, the VM hook) has none. `spec.rbfiles +=` (rather than
@@ -174,7 +174,7 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   `stdlib.gembox` already uses for `mruby-binding`/`mruby-eval`, not
   something invented here.
 - **`console/`** — a separate gem, `mrdebug-console` (`conf.gem ...,
-  path: 'console'`), for the on-device `(prdb)` prompt on PicoRuby.
+  path: 'console'`), for the on-device `(mrdbg)` prompt on PicoRuby.
   Depends on `mrdebug` (via `gemdir:` to the parent directory),
   `picoruby-editor` and `picoruby-io-console`. `MRDebug::UI::Console` reads
   the device's own raw console through `Editor::Line`, and its
@@ -381,7 +381,7 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
 - **`mrblib/mrdebug/ui.rb`** — `MRDebug::UI::Base`, the one-method contract
   (`#on_stop(session)`) a UI implements.
 - **`mrblib/mrdebug/transport.rb`** — `MRDebug::Transport::Base`:
-  the `(prdb)` prompt's I/O contract (`#gets`/`#write`), not a wire protocol
+  the `(mrdbg)` prompt's I/O contract (`#gets`/`#write`), not a wire protocol
   (DAP, rdbg, ...).
 - **`mrblib/mrdebug/transport/loopback.rb`** —
   `MRDebug::Transport::Loopback`: an in-process, array-backed transport with
@@ -396,7 +396,7 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   accepted (`.listen`, device side) or connected (`.connect`, CLI side)
   socket. `#gets` uses `#sysread`, not mruby-io's buffered `IO#gets` —
   the latter makes `#write` raise `Errno::ESPIPE` (silently swallowed by
-  the VM hook, freezing the `(prdb)` loop) once a read has more than one
+  the VM hook, freezing the `(mrdbg)` loop) once a read has more than one
   line buffered ahead, since `IO#write` on a dual-purpose fd tries to
   `lseek` back by the leftover count first.
 - **`tools/mrdebug/device.rb`** (host builds only) — `MRDebug.listen_tcp`/
@@ -422,7 +422,7 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   `DEFAULT_PORT`, via `connect_auto`) — connect via the
   transports above, then hand off to `#relay`: a raw `IO.select`-based
   byte pump between the socket and real `STDIN`/`STDOUT`, since the
-  device's `(prdb) ` prompt has no trailing newline for a `#gets`-based
+  device's `(mrdbg) ` prompt has no trailing newline for a `#gets`-based
   relay to wait on. A bare `mrdebug FILE:LINE` (a positional arg, no
   connection flag) still runs the interim local demo session instead.
   `Command.dispatch` runs on the device side, so the CLI only relays
@@ -430,13 +430,13 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
 - **`tools/mrdebug/cli/dap_server.rb`/`dap_bridge.rb`/`device_link.rb`**
   (host builds only) — `mrdebug --port P --dap-port D`: a host-side DAP
   server (for vscode-rdbg's `attach`) that drives a device over the same
-  plain-text `(prdb)` protocol, so no JSON ever reaches the device.
-  `DapBridge#handle` maps requests to `(prdb)` commands (`bt` for
+  plain-text `(mrdbg)` protocol, so no JSON ever reaches the device.
+  `DapBridge#handle` maps requests to `(mrdbg)` commands (`bt` for
   `stackTrace`, `cat` for `source`); `stepOut`/`scopes`/`variables`/
   `evaluate` aren't implemented, since the text protocol has no way to
   carry a frame's locals.
 - **`tools/mrdebug/ui/local_console.rb`** (host builds only) —
-  `MRDebug::UI::LocalConsole`: the `(prdb)` prompt, one `STDIN.gets` (now via
+  `MRDebug::UI::LocalConsole`: the `(mrdbg)` prompt, one `STDIN.gets` (now via
   a `Transport`, defaulting to `Stdio`) per command. Reading exactly one
   line at a time is what avoids the old `picoruby-editor`-based design's
   known bug (piped/pasted multi-command input losing everything after a
