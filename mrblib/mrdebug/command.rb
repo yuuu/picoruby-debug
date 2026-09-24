@@ -15,10 +15,112 @@ module MRDebug
       'cat' => :cat,
       'display' => :display,
       'watch' => :watch,
+      'h' => :help, 'help' => :help,
     }
 
     # Lines of context shown before/after the target line by `list`.
     LIST_CONTEXT = 5
+
+    # [verb, label, short, long] per command, in `help`'s listing order.
+    # Modeled on mruby-bin-debugger's (mrdb) help_msg_list: `help` prints
+    # every label/short pair, `help <cmd>` (any alias) prints `long`.
+    HELP = [
+      [:backtrace, 'bt, backtrace, where', 'Show the call stack', [
+        'Usage: backtrace',
+        '',
+        'Show the call stack, innermost frame first (#0 is the stop itself).',
+      ]],
+      [:break, 'b[reak]', 'Set breakpoint', [
+        'Usage: break [file:]line [if expr]',
+        '       break Class#method | Class.method | method [if expr]',
+        '',
+        'Set breakpoint at specified line or method.',
+        'If \'[file:]line\' is specified, break at start of code for that line (in a file).',
+        'The file name matches by suffix; it defaults to the current file.',
+        'If \'Class#method\' is specified, break on entering that instance method',
+        '(subclasses and includers included); \'Class.method\' for a singleton method,',
+        'bare \'method\' for a method of any class.',
+        'With \'if expr\', stop only when expr is truthy.',
+        'With no argument, list breakpoints.',
+      ]],
+      [:cat, 'cat', 'Show a whole source file', [
+        'Usage: cat [file]',
+        '',
+        'Print the whole source file (the current file with no argument).',
+      ]],
+      [:continue, 'c[ontinue]', 'Continue program being debugged', [
+        'Usage: continue',
+        '',
+        'Continue program stopped by a breakpoint.',
+        'An empty line is equivalent to \'continue\'.',
+      ]],
+      [:delete, 'd[elete]', 'Delete breakpoints', [
+        'Usage: delete [bpno]',
+        '',
+        'Delete the breakpoint numbered bpno.',
+        'To delete all breakpoints, give no argument.',
+      ]],
+      [:display, 'display', 'Print expression at every stop', [
+        'Usage: display expr',
+        '',
+        'Evaluate and print the value of the mruby expression every time the program stops.',
+      ]],
+      [:down, 'down', 'Select the callee frame', [
+        'Usage: down [N]',
+        '',
+        'Move the selected frame N frames back toward the stop (N defaults to 1).',
+      ]],
+      [:frame, 'f[rame]', 'Select or show a frame', [
+        'Usage: frame [N]',
+        '',
+        'Select frame N (numbered as by \'backtrace\'), or show the selected frame.',
+        '\'print\' and \'list\' follow the selected frame; execution resumes from the stop.',
+      ]],
+      [:help, 'h[elp]', 'Print this help', [
+        'Usage: help [command]',
+        '',
+        'With no arguments, help displays a short list of commands.',
+        'With a command name as help argument, help displays how to use that command.',
+      ]],
+      [:list, 'l[ist]', 'List specified line', [
+        'Usage: list',
+        '       list line',
+        '       list filename:line',
+        '',
+        "Print #{LIST_CONTEXT} lines on either side of a line of a source file.",
+        '',
+        'With no argument, list prints around the selected frame\'s current line.',
+        'With filename, list prints lines in the specified source file.',
+      ]],
+      [:next, 'n[ext]', 'Step program, stepping over calls', [
+        'Usage: next [N]',
+        '',
+        'Step program until it reaches a different source line in the same or a shallower frame.',
+        'Repeat N times (N defaults to 1).',
+      ]],
+      [:print, 'p[rint]', 'Print value of expression', [
+        'Usage: print expr',
+        '',
+        'It evaluates and prints the value of the mruby expression in the selected frame.',
+      ]],
+      [:step, 's[tep]', 'Step program until it reaches a different source line', [
+        'Usage: step [N]',
+        '',
+        'Step program until it reaches a different source line, entering calls.',
+        'Repeat N times (N defaults to 1).',
+      ]],
+      [:up, 'up', 'Select the caller frame', [
+        'Usage: up [N]',
+        '',
+        'Move the selected frame N frames toward the caller (N defaults to 1).',
+      ]],
+      [:watch, 'watch', 'Stop when an expression changes', [
+        'Usage: watch [expr]',
+        '',
+        'Stop when the value of the mruby expression changes.',
+        'With no argument, list watches.',
+      ]],
+    ]
 
     # Parses one command line and dispatches it against `session`.
     # Returns [output_lines, :stay | :resume]; never prints (the UI does).
@@ -56,6 +158,8 @@ module MRDebug
         [display_cmd(session, arg), :stay]
       when :watch
         [watch_cmd(session, arg), :stay]
+      when :help
+        [help_cmd(arg), :stay]
       else
         [["unknown command: #{line}"], :stay]
       end
@@ -243,6 +347,19 @@ module MRDebug
       else
         ["No breakpoint ##{arg}"]
       end
+    end
+
+    def self.help_cmd(arg)
+      if blank?(arg)
+        lines = ['Commands']
+        HELP.each { |_, label, short, _| lines << "  #{label} -- #{short}" }
+        return lines
+      end
+      name = trim(arg)
+      verb = VERBS[name]
+      # '' is also a VERBS key (continue), but blank? handled it above.
+      HELP.each { |v, _, _, long| return long if v == verb }
+      ["Invalid command \"#{name}\". Try \"help\"."]
     end
 
     def self.display_cmd(session, arg)

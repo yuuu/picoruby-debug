@@ -79,6 +79,7 @@ script.rb` also works).
 | `backtrace` | `bt`, `where` | Show the call stack (`#0` = innermost) |
 | `frame [<n>]` | `f` | Select frame `<n>`, or show the selected frame |
 | `up [<n>]` / `down [<n>]` | | Move the selected frame toward the caller / back |
+| `help [<command>]` | `h` | List commands, or show `<command>`'s usage |
 
 - File names match by suffix: `break foo.rb:8` matches `/path/to/foo.rb`.
 - A method breakpoint stops inside a Ruby method, or just before calling a

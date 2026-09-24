@@ -422,3 +422,40 @@ assert('Command.dispatch frame rejects a non-numeric frame number') do
 ensure
   MRDebug::Hook.uninstall
 end
+
+assert('Command.dispatch help lists every command, one line each') do
+  session = MRDebug::Session.new
+  out, action = MRDebug::Command.dispatch(session, 'help')
+  assert_equal :stay, action
+  assert_equal 'Commands', out[0]
+  assert_equal MRDebug::Command::HELP.size + 1, out.size
+  assert_true out.include?('  c[ontinue] -- Continue program being debugged')
+  assert_equal out, MRDebug::Command.dispatch(session, 'h')[0]
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch help covers every dispatchable verb') do
+  helped = MRDebug::Command::HELP.map { |v, _, _, _| v }
+  MRDebug::Command::VERBS.each_value { |v| assert_true helped.include?(v), "no help for #{v}" }
+end
+
+assert('Command.dispatch help <command> shows usage, accepting any alias') do
+  session = MRDebug::Session.new
+  out, action = MRDebug::Command.dispatch(session, 'help break')
+  assert_equal :stay, action
+  assert_equal 'Usage: break [file:]line [if expr]', out[0]
+  assert_equal out, MRDebug::Command.dispatch(session, 'help b')[0]
+  assert_equal MRDebug::Command.dispatch(session, 'help backtrace')[0],
+               MRDebug::Command.dispatch(session, 'h where')[0]
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch help <unknown> reports an invalid command') do
+  session = MRDebug::Session.new
+  out, = MRDebug::Command.dispatch(session, 'help xyz')
+  assert_equal ['Invalid command "xyz". Try "help".'], out
+ensure
+  MRDebug::Hook.uninstall
+end
