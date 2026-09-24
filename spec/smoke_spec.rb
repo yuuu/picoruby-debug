@@ -81,4 +81,46 @@ RSpec.describe 'mrdebug (prdb) session' do
       ['c', "total=5\n"],
     ]
   end
+
+  it 'moves between frames with up/down/frame and evaluates in the selected one' do
+    transcript = debug(<<~RUBY, 'break 3', 'c', 'up', 'p x', 'list', 'up', 'down 5', 'p a', 'frame 1', 'frame 9', 'c')
+      def inner(a)
+        b = a + 1
+        b
+      end
+
+      def outer(x)
+        inner(x * 2)
+      end
+
+      binding.debugger
+      puts outer(10)
+    RUBY
+
+    expect(transcript).to eq [
+      [nil, "Stop: script.rb:10\n"],
+      ['break 3', "Breakpoint 1 added at script.rb:3\n"],
+      ['c', "Breakpoint 1: script.rb:3\n"],
+      ['up', "#1 script.rb:7\n"],
+      ['p x', "10\n"],
+      ['list', <<~LIST],
+           2    b = a + 1
+           3    b
+           4  end
+           5  
+           6  def outer(x)
+        => 7    inner(x * 2)
+           8  end
+           9  
+           10  binding.debugger
+           11  puts outer(10)
+      LIST
+      ['up', "#2 script.rb:11\n"],
+      ['down 5', "#0 script.rb:3\n"],
+      ['p a', "20\n"],
+      ['frame 1', "#1 script.rb:7\n"],
+      ['frame 9', "No frame #9\n"],
+      ['c', "21\n"],
+    ]
+  end
 end

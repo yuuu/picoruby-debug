@@ -307,6 +307,15 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
     method-breakpoint path passes a 4th arg, `forced`; a real `Session` and
     the recorder subclasses take `def on_line(file, line, bnd = nil, forced
     = nil)`.)
+  - **Frame selection** (`frame`/`up`/`down`): `#select_frame(n)` picks a
+    `#backtrace` index (0 = the stop itself) and caches that frame's
+    `Hook.frame_binding`; `#binding` and `#location` (what `print`/`list`/
+    `cat` use) follow the selected frame, while `@file`/`@line` stay the
+    stop's own position (breakpoints, `next`'s depth, the banner). A new
+    stop resets the selection to 0. `#backtrace` skips frames with no
+    position (C methods), so a backtrace index maps to a raw
+    `Hook.frame_*` depth via the private `#frame_list`, not by
+    `index + offset`.
   - **`#method_bp_for(recv, mid, is_cfunc)`** (public — the VM hook
     funcalls it) returns the `MethodBreakpoint` whose name matches `mid` and
     whose `#matches_call?(recv)` holds, or `nil`; only in run mode (method

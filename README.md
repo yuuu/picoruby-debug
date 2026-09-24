@@ -92,7 +92,15 @@ file the VM reports, so `break foo.rb:8` matches `/path/to/foo.rb`.
 | `break <Class>#<method>` / `<Class>.<method>` / `<method>` | `b` | Add a method breakpoint: stop when that method is called (`#` instance, `.` singleton, bare name = any class) |
 | `delete [<number>]` | `d` | Delete breakpoint `<number>` (as listed by `break`), or all breakpoints with no argument |
 | `list [[<file>:]<line>]` | `l` | Show 5 lines of source on either side of the current line (or `<line>`, in `<file>` if given), current line marked with `=>` |
-| `print <expression>` | `p` | Evaluate `<expression>` against the stopped frame's binding |
+| `print <expression>` | `p` | Evaluate `<expression>` against the selected frame's binding |
+| `backtrace` | `bt`, `where` | Show the call stack, innermost frame (`#0`) first |
+| `frame [<number>]` | `f` | Select frame `<number>` (as numbered by `bt`), or show the selected frame with no argument |
+| `up [<n>]` | | Select the frame `<n>` (default 1) levels toward the caller |
+| `down [<n>]` | | Select the frame `<n>` (default 1) levels back toward the stop |
+
+`up`/`down`/`frame` only change which frame `print` and `list` look at;
+`step`/`next`/`continue` always resume from where execution actually
+stopped, and every new stop selects frame `#0` again.
 
 A method breakpoint (`break Foo#bar`, `break Foo.bar`, `break bar`) stops
 *inside* the method for a Ruby method, or just before the call for a C
@@ -251,9 +259,9 @@ default branch.
 
 Not in phase 1, roughly in the order a future phase might tackle them:
 
-- `quit`, `bt`/`frame`/`up`/`down`, `finish`, `catch` (exception breakpoints)
-  (`watch`, `display`, `step N`/`next N`, conditional and method breakpoints
-  have since landed)
+- `quit`, `finish`, `catch` (exception breakpoints)
+  (`watch`, `display`, `step N`/`next N`, conditional and method breakpoints,
+  `bt`, and `frame`/`up`/`down` have since landed)
 - PicoRuby / R2P2 support (POSIX host build and an R2P2-ESP32 cross-build
   smoke test have since landed — see "Phase 1 status" above; a real
   on-device console UI and upstream build_config wiring have not)
