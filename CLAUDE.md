@@ -6,47 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `mrdebug` is an interactive debugger for **mruby**, rebuilt from scratch
 (the old `picoruby-debug` gem) to run with nothing but a plain mruby
-checkout — see `docs/plan-phase1.md` for the design rationale and the
-step-by-step history of how this codebase got to its current shape, and
-`docs/plan-phase2.md` for what comes after phase 1 (scope and ordering
-for phase 2 onward).
-Read `README.md` before making changes; it documents the command set and
-the known rough edges (particularly the "stepping shows mrdebug's own
-source" limitation) that are easy to regress.
+checkout. Read `README.md` before making changes; it documents the
+install steps and the command set.
 
-PicoRuby/R2P2 support is still not a planned phase of its own — phase 1
-remains mruby-only by design, and no on-device console UI gem
-(`mrdebug-console` or similar, still Phase3 scope) exists yet. What *has*
-landed is a handful of narrow, mechanical compatibility fixes so this
-gem's existing core (Ruby + `src/hook.c`/`src/frame.c`) also builds and
-runs under PicoRuby's `PICORB_VM_MRUBY` host build without changing
-mainline mruby's behavior at all: `mrbgem.rake`'s dependency resolution
-branches `core:` vs `gemdir:` (PicoRuby vendors `mruby-binding`/
-`mruby-eval`/`mruby-io` under `mrbgems/picoruby-mruby/lib/mruby/mrbgems`
-rather than exposing them under its own `MRUBY_ROOT/mrbgems`; the host
-CLI's socket/env needs go through PicoRuby's own `picoruby-socket`/
-`picoruby-env` instead of mainline `mruby-socket`/`mruby-env`, which
-would otherwise redefine the same class names and silently abort
-`mrb_open()`'s gem-init loop — see `tools/mrdebug/transport/socket.rb`).
-(An `MRDEBUG_NO_SVARS` guard around `dbg_context_reset`'s `c->svars` write
-used to be one of these fixes too; it was dropped once PicoRuby's vendored
-mruby picked up `svars`, so an older PicoRuby without it no longer builds.)
+It also runs under PicoRuby's `PICORB_VM_MRUBY` builds, both the POSIX
+host build and R2P2-ESP32 (ESP32-S3) firmware, through a handful of narrow
+compatibility branches that leave mainline mruby's behavior unchanged:
+`mrbgem.rake` resolves dependencies via `core:` vs `gemdir:` (PicoRuby
+vendors `mruby-binding`/`mruby-eval`/`mruby-io` under
+`mrbgems/picoruby-mruby/lib/mruby/mrbgems` instead of its own
+`MRUBY_ROOT/mrbgems`), and socket/env go through `picoruby-socket`/
+`picoruby-env` instead of `mruby-socket`/`mruby-env`, which would redefine
+the same class names and silently abort `mrb_open()`'s gem-init loop (see
+`tools/mrdebug/transport/socket.rb`). `dbg_context_reset` writes
+`c->svars`, so an older PicoRuby whose vendored mruby lacks that field
+doesn't build.
 
-The PICORB_VM_MRUBY **POSIX host** build (core plus the host CLI/DapBridge)
-is confirmed working this way. R2P2-ESP32 (ESP32-S3, PicoRuby/mruby VM)
-cross-compiles cleanly and `binding.debugger` has been confirmed working
-on real hardware, but **only with `picoruby-esp32`'s `PICORB_TASK_STACK_SIZE`
-raised to at least 32768** (its 8192 default overflows `picoruby_task`
-the instant the VM hook's context-swap/funcall chain runs — quadrupling
-the wrong build's define does nothing, since `picoruby-esp32.c` is an
-ESP-IDF CMake component read from `ENV['PICORB_TASK_STACK_SIZE']`, not
-from this gem's own build config). This was verified with a manual
-`conf.gem gemdir:` pointing at a local checkout of this gem, not a real
-R2P2-ESP32 integration — there's still no build_config wiring for it
-upstream, no on-device console UI, and PicoRuby's own `mruby-c`/femtoruby
-VM remains unsupported (`MRB_USE_DEBUG_HOOK`/`code_fetch_hook` are
-mruby-only). Don't add further `PICORB_VM_MRUBY`-style branching beyond
-what's already landed without that being its own explicit, planned phase.
+On R2P2-ESP32, `picoruby-esp32`'s `PICORB_TASK_STACK_SIZE` must be at
+least 32768 (the 8192 default overflows `picoruby_task` the instant the VM
+hook's context-swap/funcall chain runs). It's read by `picoruby-esp32.c`'s
+ESP-IDF CMake component from `ENV['PICORB_TASK_STACK_SIZE']`, not from
+this gem's build config, so setting a define here does nothing.
+PicoRuby's mruby/c VM is unsupported (`MRB_USE_DEBUG_HOOK`/
+`code_fetch_hook` are mruby-only). Don't add further
+`PICORB_VM_MRUBY`-style branching without a concrete need.
 
 ## Design policy
 
@@ -175,7 +158,11 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   replacing `spec.rbfiles`) is what makes this additive-and-safe: confirmed
   via `MRuby::Gem::Specification#setup` giving `@rbfiles` its default value
   from `mrblib/**/*.rb` *before* `instance_eval(&@initializer)` runs this
-  file's block (`lib/mruby/gem.rb` in the mruby checkout). Each of these
+  file's block (`lib/mruby/gem.rb` in the mruby checkout). A PicoRuby
+  firmware build (`picoruby && !host`) instead gets only
+  `tools/mrdebug/{transport/socket,ui/local_console,device}.rb` plus the
+  socket/env gems — enough for `MRDebug.listen_tcp` on the device, no CLI
+  and no stdio. Each of these
   dependencies is declared via `core:` on mainline mruby, or
   `gemdir:` pointing straight at PicoRuby's vendored copy
   (`mrbgems/picoruby-mruby/lib/mruby/mrbgems/<name>`) when
@@ -185,8 +172,15 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   `build.picoruby?` only exists on PicoRuby's own `MRuby::Build` subclass,
   hence the `respond_to?` guard. This is the same pattern PicoRuby's own
   `stdlib.gembox` already uses for `mruby-binding`/`mruby-eval`, not
-  something invented here. See
-  `docs/phase3-picoruby-host-verification.md`.
+  something invented here.
+- **`console/`** — a separate gem, `mrdebug-console` (`conf.gem ...,
+  path: 'console'`), for the on-device `(prdb)` prompt on PicoRuby.
+  Depends on `mrdebug` (via `gemdir:` to the parent directory),
+  `picoruby-editor` and `picoruby-io-console`. `MRDebug::UI::Console` reads
+  the device's own raw console through `Editor::Line`, and its
+  `MRDebug.autostart` overrides `tools/mrdebug/device.rb`'s (it loads
+  later as a dependent), so a device with this gem opens the console on
+  the first `binding.debugger` rather than looking at `MRDEBUG_PORT`.
 - **`src/hook.c`** — the VM hook. `struct mrdebug_hook hook` (file-static)
   holds everything: the installed session, whether the hook is armed,
   same-line dedup state (`prev_irep`/`prev_line`), the dedicated debugger
@@ -353,8 +347,8 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   line)` parses one command line and returns `[output_lines, :stay |
   :resume]`; it never prints. This is what keeps the command layer testable
   without stdio and reusable across front ends (today just
-  `LocalConsole`, but the split is exactly the "coreoutputs data, UI prints
-  it" boundary `docs/plan-phase1.md` calls for).
+  `LocalConsole`/`Console`/the DAP bridge, all of which just print or
+  translate its output).
   - **`break`** routes on the argument shape: `parse_method_spec`
     (hand-rolled, no `Regexp` — same reason as the `mruby-string-ext`
     avoidance) recognizes `Const#m` / `Const::Const.m` / bare `m` and calls
@@ -386,13 +380,13 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
     with a `"  "`/`"=>"` marker prefix for the current line (see README).
 - **`mrblib/mrdebug/ui.rb`** — `MRDebug::UI::Base`, the one-method contract
   (`#on_stop(session)`) a UI implements.
-- **`mrblib/mrdebug/transport.rb`** (Phase3) — `MRDebug::Transport::Base`:
+- **`mrblib/mrdebug/transport.rb`** — `MRDebug::Transport::Base`:
   the `(prdb)` prompt's I/O contract (`#gets`/`#write`), not a wire protocol
-  (DAP, rdbg, ...) — see `docs/plan-phase3.md`.
-- **`mrblib/mrdebug/transport/loopback.rb`** (Phase3) —
+  (DAP, rdbg, ...).
+- **`mrblib/mrdebug/transport/loopback.rb`** —
   `MRDebug::Transport::Loopback`: an in-process, array-backed transport with
   no I/O, used to test `LocalConsole` under `rake test:unit` without stdio.
-- **`tools/mrdebug/transport/stdio.rb`** (host builds only, Phase3) —
+- **`tools/mrdebug/transport/stdio.rb`** (host builds only) —
   `MRDebug::Transport::Stdio`: `STDIN`/`STDOUT` via `mruby-io`. Strips a
   trailing newline by hand (`strip_eol`, now shared on `Transport::Base`),
   not `String#chomp` — that's `mruby-string-ext`, which misbehaves under
@@ -432,8 +426,15 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   relay to wait on. A bare `mrdebug FILE:LINE` (a positional arg, no
   connection flag) still runs the interim local demo session instead.
   `Command.dispatch` runs on the device side, so the CLI only relays
-  bytes — no structured RPC layer needed here (contrast
-  `docs/phase4-to-phase3-requests.md`, about the DAP bridge's needs).
+  bytes — no structured RPC layer needed here.
+- **`tools/mrdebug/cli/dap_server.rb`/`dap_bridge.rb`/`device_link.rb`**
+  (host builds only) — `mrdebug --port P --dap-port D`: a host-side DAP
+  server (for vscode-rdbg's `attach`) that drives a device over the same
+  plain-text `(prdb)` protocol, so no JSON ever reaches the device.
+  `DapBridge#handle` maps requests to `(prdb)` commands (`bt` for
+  `stackTrace`, `cat` for `source`); `stepOut`/`scopes`/`variables`/
+  `evaluate` aren't implemented, since the text protocol has no way to
+  carry a frame's locals.
 - **`tools/mrdebug/ui/local_console.rb`** (host builds only) —
   `MRDebug::UI::LocalConsole`: the `(prdb)` prompt, one `STDIN.gets` (now via
   a `Transport`, defaulting to `Stdio`) per command. Reading exactly one
@@ -444,39 +445,26 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   above), not a hardcoded string — so a step/next stop reads `Stop: …`, not
   `Breakpoint: …`.
 
-## Known gaps (in progress)
+## Known gaps
 
-- **~~Stepping through mrdebug's own source~~ — fixed.**
-  `MRDebug::OwnSource` (`mrblib/mrdebug/own_source.rb`) is a hardcoded,
-  suffix-matched list of this gem's own Ruby files; `Session#stop_reason_for`
-  checks it first and refuses to stop (or count against `step N`/`watch`)
-  inside them. Hardcoded rather than discovered at runtime (`Dir.glob` would
-  need a filesystem, which a PicoRuby target may not have) — remember to
-  update `OwnSource::FILES` when adding, removing, or renaming a file under
-  `mrblib/mrdebug/` or `tools/mrdebug/`. This turned out to be the root
-  cause behind two problems that looked like mruby/VM bugs during Phase3
-  track B (`step N`/`next N`'s counter being consumed by mrdebug's own
-  code, and part of `watch`'s line-shift symptom) — see `docs/known-bugs.md`.
+- **mrdebug never stops in its own source.** `MRDebug::OwnSource`
+  (`mrblib/mrdebug/own_source.rb`) is a hardcoded, suffix-matched list of
+  this gem's own Ruby files; `Session#stop_reason_for` checks it first and
+  refuses to stop (or count against `step N`/`watch`) inside them.
+  Hardcoded rather than discovered at runtime (`Dir.glob` would need a
+  filesystem, which a PicoRuby target may not have) — update
+  `OwnSource::FILES` when adding, removing, or renaming a file under
+  `mrblib/mrdebug/` or `tools/mrdebug/`. Missing an
+  entry shows up as `step N`/`next N`'s counter being consumed by mrdebug's
+  own code, or `watch` reporting a shifted line — symptoms that look like
+  VM bugs but aren't.
 - **Performance**: `RUN` mode with one or more breakpoints funcalls into
   Ruby once per *executed source line*, everywhere, not just near a
   breakpoint's file — the old C implementation had a fast path that skipped
   irep files unrelated to any breakpoint, dropped when breakpoint matching
   moved to Ruby. Only `MRDebug::Hook.armed` is left as a fast gate on the C
   side (see above), so a build with zero active breakpoints and no
-  step/next in flight costs nothing beyond that. See `README.md`'s Overhead
-  section for measured numbers.
-- **PicoRuby/R2P2 support is still just the core, not a real phase.**
-  See "What this gem is" for the `mrbgem.rake`/`src/hook.c` compatibility
-  fixes and the R2P2-ESP32 (ESP32-S3) cross-build/hardware verification,
-  including the `PICORB_TASK_STACK_SIZE=32768` requirement.
-  Everything `docs/plan-phase1.md`'s "後続フェーズに送る項目" describes for
-  a real PicoRuby phase is still missing: an on-device console UI gem
-  depending on `picoruby-editor`/`picoruby-io-console` (this gem's
-  `tools/mrdebug/ui/local_console.rb` assumes plain stdio, which PicoRuby's
-  own R2P2 binary does not always have), real R2P2-ESP32 build_config
-  wiring upstream (only manually verified via `conf.gem gemdir:` so far),
-  and PicoRuby's mrubyc/femtoruby VM (a different, unrelated implementation
-  would be needed there — `MRB_USE_DEBUG_HOOK`/`code_fetch_hook` are
-  mruby-only). Don't reintroduce further `PICORB_VM_MRUBY`-style branching
-  beyond what's already landed without that being its own explicit,
-  planned phase.
+  step/next in flight costs nothing beyond that (~1.8µs/line once armed,
+  ~145x on a tight loop).
+- **PicoRuby**: no upstream R2P2-ESP32 build_config wiring (verified only
+  by adding the gem manually), and no mruby/c VM support.
