@@ -1,0 +1,302 @@
+# Every Session created here must be cleaned up via Hook.uninstall, or an
+# armed hook leaks into the rest of mrbtest's run.
+
+assert('Session#add_breakpoint numbers sequentially, 1-based') do
+  session = MRDebug::Session.new
+  assert_equal 1, session.add_breakpoint('a.rb', 1)
+  assert_equal 2, session.add_breakpoint('b.rb', 2)
+  assert_equal 3, session.add_breakpoint('c.rb', 3)
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#remove_breakpoint deactivates in place; numbers stay stable') do
+  session = MRDebug::Session.new
+  session.add_breakpoint('a.rb', 1)
+  session.add_breakpoint('b.rb', 2)
+  session.add_breakpoint('c.rb', 3)
+
+  assert_true session.remove_breakpoint(2)
+  assert_false session.remove_breakpoint(2) # already removed
+  assert_false session.remove_breakpoint(99) # out of range
+
+  assert_equal 4, session.add_breakpoint('d.rb', 4) # a fresh number, not a reused #2
+
+  active_numbers = []
+  session.breakpoints.each_with_index { |bp, i| active_numbers << i + 1 if bp.active? }
+  assert_equal [1, 3, 4], active_numbers
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#clear_breakpoints deactivates all') do
+  session = MRDebug::Session.new
+  session.add_breakpoint('a.rb', 1)
+  session.add_breakpoint('b.rb', 2)
+  session.clear_breakpoints
+  assert_true session.breakpoints.all? { |bp| !bp.active? }
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#on_line stops on a matching breakpoint in run mode') do
+  session = MRDebug::Session.new
+  session.add_breakpoint('foo.rb', 10)
+  assert_true session.on_line('/path/to/foo.rb', 10)
+  assert_equal '/path/to/foo.rb', session.file
+  assert_equal 10, session.line
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#stop_banner: the LineBreakpoint that was hit renders it, with its number') do
+  session = MRDebug::Session.new
+  session.add_breakpoint('a.rb', 1)
+  session.add_breakpoint('foo.rb', 10)
+  session.on_line('/path/to/foo.rb', 10)
+  assert_same session.breakpoints[1], session.stopped_by
+  assert_equal 'Breakpoint 2: /path/to/foo.rb:10', session.stop_banner
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#stop_banner: step/next/binding.debugger stops render a plain "Stop:" line') do
+  # Stub Hook.armed= so step mode can't self-trace this test and clobber @file/@line.
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_armed_setter_for_test, :armed=)
+  MRDebug::Hook.define_singleton_method(:armed=) { |_flag| }
+  begin
+    session = MRDebug::Session.new
+
+    session.step_mode!
+    session.on_line('/x.rb', 3)
+    assert_equal :step, session.stopped_by
+    assert_equal 'Stop: /x.rb:3', session.stop_banner
+
+    session.on_line('/x.rb', 4, binding)
+    assert_equal :debugger, session.stopped_by
+    assert_equal 'Stop: /x.rb:4', session.stop_banner
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :armed=, :orig_armed_setter_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_armed_setter_for_test)
+end
+
+assert('Session#on_line does not stop on a non-matching file or line') do
+  session = MRDebug::Session.new
+  session.add_breakpoint('foo.rb', 10)
+  assert_false session.on_line('/path/to/foo.rb', 11)
+  assert_false session.on_line('/path/to/other.rb', 10)
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#on_line always stops when a Binding is given directly') do
+  session = MRDebug::Session.new
+  bnd = binding
+  assert_true session.on_line('x.rb', 1, bnd)
+  assert_same bnd, session.binding
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#display_lines is empty before any stop or with nothing registered') do
+  session = MRDebug::Session.new
+  assert_equal [], session.display_lines
+  session.add_display('1 + 1')
+  assert_equal [], session.display_lines # no stop yet: no binding to evaluate against
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#display_lines evaluates registered expressions against the stopped binding') do
+  session = MRDebug::Session.new
+  x = 42
+  session.add_display('x')
+  session.add_display('x + 1')
+  session.on_line('/x.rb', 1, binding)
+  assert_equal [['x', '42'], ['x + 1', '43']], session.display_lines
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#display_lines reports a raised exception instead of crashing') do
+  session = MRDebug::Session.new
+  session.add_display('this_is_not_defined')
+  session.on_line('/x.rb', 1, binding)
+  expr, result = session.display_lines[0]
+  assert_equal 'this_is_not_defined', expr
+  assert_true result.include?('NoMethodError')
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#step_mode! stops on every line') do
+  session = MRDebug::Session.new
+  session.step_mode!
+  assert_true session.on_line('a.rb', 1)
+  assert_true session.on_line('a.rb', 2)
+  assert_true session.on_line('b.rb', 99)
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#step_mode!(N) skips the first N-1 matching lines before stopping') do
+  # alias_method, not remove_method -- the latter deletes a shadowed
+  # C-defined method outright instead of un-shadowing it.
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_armed_setter_for_test, :armed=)
+  MRDebug::Hook.define_singleton_method(:armed=) { |_flag| }
+  begin
+    session = MRDebug::Session.new
+    session.step_mode!(3)
+    assert_false session.on_line('a.rb', 1) # 1st match: skip
+    assert_false session.on_line('a.rb', 2) # 2nd match: skip
+    assert_true session.on_line('a.rb', 3)  # 3rd match: stop
+    assert_true session.on_line('a.rb', 4)  # repeat count spent: back to stopping every line
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :armed=, :orig_armed_setter_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_armed_setter_for_test)
+end
+
+assert('Session#on_line with a Binding stops immediately, ignoring a pending repeat count') do
+  session = MRDebug::Session.new
+  session.step_mode!(5)
+  assert_true session.on_line('x.rb', 1, binding)
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Session#next_mode! stops at the recorded depth or shallower') do
+  # Hook.frame_count reads the live VM call stack, which a plain unit test
+  # doesn't control -- stub it for a deterministic :next comparison.
+  depth = [2]
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
+  MRDebug::Hook.define_singleton_method(:frame_count) { depth[0] }
+  begin
+    session = MRDebug::Session.new
+    session.next_mode! # records next_depth = 2 (the stub's current value)
+
+    depth[0] = 3
+    assert_false session.on_line('a.rb', 1) # deeper than recorded: keep going
+
+    depth[0] = 2
+    assert_true session.on_line('a.rb', 2) # same depth: stop
+
+    depth[0] = 1
+    assert_true session.on_line('a.rb', 3) # shallower: stop
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
+end
+
+assert('Session#next_mode!(N) must satisfy the depth condition N times before stopping') do
+  # Same Hook.armed= stub as step_mode!(N)'s test above, for the same reason.
+  depth = [2]
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
+  MRDebug::Hook.define_singleton_method(:frame_count) { depth[0] }
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_armed_setter_for_test, :armed=)
+  MRDebug::Hook.define_singleton_method(:armed=) { |_flag| }
+  begin
+    session = MRDebug::Session.new
+    session.next_mode!(3) # records next_depth = 2
+
+    assert_false session.on_line('a.rb', 1) # 1st match at recorded depth: skip
+    assert_false session.on_line('a.rb', 2) # 2nd match: skip
+    assert_true session.on_line('a.rb', 3)  # 3rd match: stop
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:alias_method, :armed=, :orig_armed_setter_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_armed_setter_for_test)
+end
+
+assert('Session#backtrace: hook-triggered stop uses depth 0 from @file/@line, offset 0') do
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
+  MRDebug::Hook.define_singleton_method(:frame_count) { 1 }
+  begin
+    session = MRDebug::Session.new
+    session.step_mode! # so on_line actually stops (no breakpoint needed)
+    session.on_line('a.rb', 5) # no Binding: not a direct stop
+
+    assert_equal [['a.rb', 5]], session.backtrace
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
+end
+
+assert('Session#backtrace: a direct binding.debugger stop subtracts DIRECT_STOP_FRAME_OFFSET') do
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
+  MRDebug::Hook.define_singleton_method(:frame_count) { 5 } # 3 offset frames + 2 real ones
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_position_for_test, :frame_position)
+  MRDebug::Hook.define_singleton_method(:frame_position) { |depth| depth == 4 ? ['caller.rb', 20] : nil }
+  begin
+    session = MRDebug::Session.new
+    session.on_line('a.rb', 10, binding) # a Binding: a direct stop
+
+    assert_equal [['a.rb', 10], ['caller.rb', 20]], session.backtrace
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_position, :orig_frame_position_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_position_for_test)
+end
+
+assert('Session#select_frame moves binding/location to a caller frame; a new stop resets to frame 0') do
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
+  MRDebug::Hook.define_singleton_method(:frame_count) { 6 } # 3 offset frames + 3 real ones
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_position_for_test, :frame_position)
+  # depth 4 has no position (a C method frame): skipped, so frame #1 is depth 5.
+  MRDebug::Hook.define_singleton_method(:frame_position) { |depth| depth == 5 ? ['caller.rb', 20] : nil }
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_binding_for_test, :frame_binding)
+  caller_bnd = binding
+  MRDebug::Hook.define_singleton_method(:frame_binding) { |depth| depth == 5 ? caller_bnd : nil }
+  begin
+    session = MRDebug::Session.new
+    stop_bnd = binding
+    session.on_line('a.rb', 10, stop_bnd)
+
+    assert_equal 0, session.frame_index
+    assert_equal ['a.rb', 10], session.location
+    assert_nil session.select_frame(2)
+    assert_equal 0, session.frame_index
+
+    assert_equal ['caller.rb', 20], session.select_frame(1)
+    assert_equal 1, session.frame_index
+    assert_equal ['caller.rb', 20], session.location
+    assert_same caller_bnd, session.binding
+
+    assert_equal ['a.rb', 10], session.select_frame(0)
+    assert_same stop_bnd, session.binding
+
+    session.select_frame(1)
+    session.on_line('a.rb', 11, stop_bnd)
+    assert_equal 0, session.frame_index
+    assert_equal ['a.rb', 11], session.location
+    assert_same stop_bnd, session.binding
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_position, :orig_frame_position_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_position_for_test)
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_binding, :orig_frame_binding_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_binding_for_test)
+end

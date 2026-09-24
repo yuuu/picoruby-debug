@@ -1,16 +1,48 @@
-MRuby::Gem::Specification.new('picoruby-debug') do |spec|
+MRuby::Gem::Specification.new('mrdebug') do |spec|
   spec.license = 'MIT'
   spec.author  = 'Yuhei Okazaki'
-  spec.summary = 'Debugger for PicoRuby (mruby only)'
+  spec.summary = 'Debugger core for mruby'
 
-  spec.add_dependency 'picoruby-sandbox'
-  spec.add_dependency 'picoruby-editor'
-  spec.add_dependency 'picoruby-io-console'
-  spec.add_dependency 'picoruby-json'
-  if build.vm_mruby?
-    spec.add_dependency 'mruby-binding', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-binding"
-    spec.add_dependency 'mruby-eval', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-eval"
+  # picoruby? exists only on PicoRuby's MRuby::Build subclass.
+  build    = spec.build
+  picoruby = build.respond_to?(:picoruby?) && build.picoruby?
+  host     = build.host?
+
+  # PicoRuby vendors mruby's gems outside MRUBY_ROOT/mrbgems.
+  add_mruby_gem = lambda do |name|
+    if picoruby
+      spec.add_dependency name, gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/#{name}"
+    else
+      spec.add_dependency name, core: name
+    end
   end
 
-  build.defines << 'MRB_USE_DEBUG_HOOK' if build.vm_mruby?
+  # mruby-socket/-env collide with picoruby-socket/-env's class defs.
+  add_socket_and_env = lambda do
+    prefix = picoruby ? 'picoruby' : 'mruby'
+    spec.add_dependency "#{prefix}-socket", core: "#{prefix}-socket"
+    spec.add_dependency "#{prefix}-env", core: "#{prefix}-env"
+  end
+
+  build.defines << 'MRB_USE_DEBUG_HOOK'
+
+  # test/build_config/ holds the rake build configs this repo's Rakefile
+  # drives mruby/PicoRuby with, not mrbtest files.
+  spec.test_rbfiles = Dir["#{spec.dir}/test/**/*.rb"].sort - Dir["#{spec.dir}/test/build_config/**/*.rb"]
+
+  add_mruby_gem.call('mruby-binding')
+  add_mruby_gem.call('mruby-eval')
+
+  if host
+    add_mruby_gem.call('mruby-io')
+    add_socket_and_env.call
+    spec.rbfiles += Dir.glob("#{spec.dir}/tools/mrdebug/**/*.rb").sort
+    # The bin's C launcher must live in tools/mrdbg/ (mruby's convention).
+    spec.bins << 'mrdbg'
+  elsif picoruby
+    # Firmware: device-side socket transport only (no CLI, no stdio).
+    add_socket_and_env.call
+    spec.rbfiles += %w[transport/socket.rb ui/local_console.rb device.rb]
+                      .map { |f| "#{spec.dir}/tools/mrdebug/#{f}" }
+  end
 end
