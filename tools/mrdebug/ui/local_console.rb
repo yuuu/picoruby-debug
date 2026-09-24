@@ -1,6 +1,6 @@
 module MRDebug
   module UI
-    # The (prdb) prompt, driven by a Transport -- avoids the old
+    # The (mrdbg) prompt, driven by a Transport -- avoids the old
     # picoruby-editor multi-command-in-one-read bug by construction.
     class LocalConsole < Base
       def initialize(transport = Transport::Stdio.new)
@@ -11,7 +11,7 @@ module MRDebug
         @transport.write("#{session.stop_banner}\n")
         session.display_lines.each { |expr, result| @transport.write("#{expr} = #{result}\n") }
         loop do
-          @transport.write('(prdb) ')
+          @transport.write('(mrdbg) ')
           line = @transport.gets
           return if line.nil? # EOF: let the script run to completion
           output, action = Command.dispatch(session, line)

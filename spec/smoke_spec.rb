@@ -1,7 +1,7 @@
 # Keep these to output that's identical on mruby and PicoRuby: stepping into
 # core mrblib (Integer#times) or a watch firing inside Kernel#puts prints
 # VM-specific paths.
-RSpec.describe 'mrdebug (prdb) session' do
+RSpec.describe 'mrdebug (mrdbg) session' do
   it 'stops at binding.debugger and handles print/next/breakpoints/bt/list' do
     transcript = debug(<<~RUBY, 'p x', 'n', 'p y', 'break 9', 'break Foo#bar', 'break', 'c', 'p c', 'bt', 'c', 'p n', 'list', 'c')
       class Foo

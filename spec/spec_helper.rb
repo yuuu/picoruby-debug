@@ -4,7 +4,7 @@ require 'open3'
 require 'tmpdir'
 
 module SmokeHelper
-  PROMPT = '(prdb) '
+  PROMPT = '(mrdbg) '
 
   def smoke_bin
     bin = ENV['MRDEBUG_SMOKE_BIN']
@@ -16,7 +16,7 @@ module SmokeHelper
   end
 
   # Runs +source+ (as script.rb, by relative path so stop banners don't
-  # depend on a tmpdir) with +commands+ piped to the (prdb) prompt.
+  # depend on a tmpdir) with +commands+ piped to the (mrdbg) prompt.
   # Returns [[nil, output before the first prompt], [command, its output], ...];
   # the last command's output also holds whatever the script printed after
   # resuming for good.

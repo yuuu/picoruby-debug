@@ -3,7 +3,7 @@ require 'io/console'
 
 module MRDebug
   module UI
-    # The (prdb) prompt read directly off the device's own console (raw
+    # The (mrdbg) prompt read directly off the device's own console (raw
     # STDIN/STDOUT via picoruby-io-console), using picoruby-editor's
     # Editor::Line for line editing/history -- the on-device counterpart to
     # LocalConsole (tools/mrdebug/ui/local_console.rb), which is Transport-
@@ -17,7 +17,7 @@ module MRDebug
             @history = [[""]]
             @history_index = 0
             @prev_cursor_y = 0
-            self.prompt = "(prdb) "
+            self.prompt = "(mrdbg) "
           end
         end.new
       end

@@ -1,7 +1,7 @@
 # mrdebug
 
 An interactive debugger for **mruby** (and PicoRuby's mruby VM). Put
-`binding.debugger` in a script and it pauses there with a `(prdb)` prompt.
+`binding.debugger` in a script and it pauses there with a `(mrdbg)` prompt.
 
 ## Installation
 
@@ -40,20 +40,20 @@ puts y
 ```
 $ mruby script.rb
 Stop: script.rb:6
-(prdb) n
+(mrdbg) n
 Stop: script.rb:7
-(prdb) p y
+(mrdbg) p y
 nil
-(prdb) break 2
+(mrdbg) break 2
 Breakpoint 1 added at script.rb:2
-(prdb) c
+(mrdbg) c
 Breakpoint 1: script.rb:2
-(prdb) p a + b
+(mrdbg) p a + b
 3
-(prdb) bt
+(mrdbg) bt
 #0 script.rb:2
 #1 script.rb:7
-(prdb) c
+(mrdbg) c
 3
 ```
 

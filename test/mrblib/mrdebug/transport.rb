@@ -16,7 +16,7 @@ end
 
 assert('Transport::Loopback#write records each call in #output, in order') do
   transport = MRDebug::Transport::Loopback.new
-  transport.write('(prdb) ')
+  transport.write('(mrdbg) ')
   transport.write("Stop: a.rb:1\n")
-  assert_equal ['(prdb) ', "Stop: a.rb:1\n"], transport.output
+  assert_equal ['(mrdbg) ', "Stop: a.rb:1\n"], transport.output
 end
