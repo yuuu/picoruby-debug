@@ -256,3 +256,47 @@ ensure
   MRDebug::Hook.singleton_class.send(:alias_method, :frame_position, :orig_frame_position_for_test)
   MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_position_for_test)
 end
+
+assert('Session#select_frame moves binding/location to a caller frame; a new stop resets to frame 0') do
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_count_for_test, :frame_count)
+  MRDebug::Hook.define_singleton_method(:frame_count) { 6 } # 3 offset frames + 3 real ones
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_position_for_test, :frame_position)
+  # depth 4 has no position (a C method frame): skipped, so frame #1 is depth 5.
+  MRDebug::Hook.define_singleton_method(:frame_position) { |depth| depth == 5 ? ['caller.rb', 20] : nil }
+  MRDebug::Hook.singleton_class.send(:alias_method, :orig_frame_binding_for_test, :frame_binding)
+  caller_bnd = binding
+  MRDebug::Hook.define_singleton_method(:frame_binding) { |depth| depth == 5 ? caller_bnd : nil }
+  begin
+    session = MRDebug::Session.new
+    stop_bnd = binding
+    session.on_line('a.rb', 10, stop_bnd)
+
+    assert_equal 0, session.frame_index
+    assert_equal ['a.rb', 10], session.location
+    assert_nil session.select_frame(2)
+    assert_equal 0, session.frame_index
+
+    assert_equal ['caller.rb', 20], session.select_frame(1)
+    assert_equal 1, session.frame_index
+    assert_equal ['caller.rb', 20], session.location
+    assert_same caller_bnd, session.binding
+
+    assert_equal ['a.rb', 10], session.select_frame(0)
+    assert_same stop_bnd, session.binding
+
+    session.select_frame(1)
+    session.on_line('a.rb', 11, stop_bnd)
+    assert_equal 0, session.frame_index
+    assert_equal ['a.rb', 11], session.location
+    assert_same stop_bnd, session.binding
+  ensure
+    MRDebug::Hook.uninstall
+  end
+ensure
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_count, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_count_for_test)
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_position, :orig_frame_position_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_position_for_test)
+  MRDebug::Hook.singleton_class.send(:alias_method, :frame_binding, :orig_frame_binding_for_test)
+  MRDebug::Hook.singleton_class.send(:remove_method, :orig_frame_binding_for_test)
+end

@@ -5,7 +5,7 @@ module MRDebug
     # direct stop's Hook.frame_count always includes these 3 extra frames.
     DIRECT_STOP_FRAME_OFFSET = 3
 
-    attr_reader :file, :line, :binding, :stopped_by
+    attr_reader :file, :line, :stopped_by, :frame_index
     attr_accessor :ui
 
     def initialize
@@ -15,6 +15,7 @@ module MRDebug
       @remaining = 1
       @displays = []
       @watches = []
+      @frame_index = 0
       MRDebug::Hook.install(self)
     end
 
@@ -43,23 +44,37 @@ module MRDebug
       @displays.map { |d| [d.expr, d.result(@binding)] }
     end
 
-    # [[file, line], ...] from depth 0 (the current stop) outward. Depth 0
-    # always reuses @file/@line rather than Hook.frame_position(offset):
-    # for a direct binding.debugger stop, that position belongs to
-    # MRDebug::Hook.enter's own frame, not the call site (see
-    # DIRECT_STOP_FRAME_OFFSET above).
+    # [[file, line], ...] from depth 0 (the current stop) outward -- the
+    # same numbering frame/up/down select by.
     def backtrace
-      offset = @direct_stop ? DIRECT_STOP_FRAME_OFFSET : 0
-      n = MRDebug::Hook.frame_count - offset
-      return [] if n <= 0
-      frames = []
-      i = 0
-      while i < n
-        pos = i == 0 ? [@file, @line] : MRDebug::Hook.frame_position(i + offset)
-        frames << pos if pos
-        i += 1
-      end
-      frames
+      frame_list.map { |f| [f[0], f[1]] }
+    end
+
+    # The selected frame's Binding (the stop's own until up/down/frame
+    # moves off frame 0) -- what print/eval run against.
+    def binding
+      @frame_index == 0 ? @binding : @frame_binding
+    end
+
+    # [file, line] of the selected frame, or nil before the first stop.
+    def location
+      return nil if @file.nil?
+      return [@file, @line] if @frame_index == 0
+      [@frame_file, @frame_line]
+    end
+
+    # Selects backtrace frame n (0 = innermost). [file, line] of the new
+    # frame, or nil (selection unchanged) when n is out of range.
+    def select_frame(n)
+      return nil if @file.nil?
+      frames = frame_list
+      return nil if n < 0 || n >= frames.size
+      file, line, depth = frames[n]
+      @frame_index = n
+      @frame_file = file
+      @frame_line = line
+      @frame_binding = n == 0 ? nil : MRDebug::Hook.frame_binding(depth)
+      [file, line]
     end
 
     def add_breakpoint(file, line, condition = nil)
@@ -150,11 +165,33 @@ module MRDebug
       @binding = bnd || MRDebug::Hook.frame_binding(0)
       @direct_stop = !bnd.nil?
       @stopped_by = reason
+      @frame_index = 0
+      @frame_binding = nil
       ui.on_stop(self) if ui
       true
     end
 
     private
+
+    # [[file, line, depth], ...], depth being the raw Hook.frame_* depth.
+    # Depth 0 always reuses @file/@line rather than Hook.frame_position:
+    # for a direct binding.debugger stop, that position belongs to
+    # MRDebug::Hook.enter's own frame, not the call site (see
+    # DIRECT_STOP_FRAME_OFFSET above). Frames with no position (C
+    # methods) are skipped, so a list index isn't always depth - offset.
+    def frame_list
+      offset = @direct_stop ? DIRECT_STOP_FRAME_OFFSET : 0
+      n = MRDebug::Hook.frame_count - offset
+      return [] if n <= 0
+      frames = []
+      i = 0
+      while i < n
+        pos = i == 0 ? [@file, @line] : MRDebug::Hook.frame_position(i + offset)
+        frames << [pos[0], pos[1], i + offset] if pos
+        i += 1
+      end
+      frames
+    end
 
     def sync_method_names
       names = []

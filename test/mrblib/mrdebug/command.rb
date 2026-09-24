@@ -400,3 +400,25 @@ assert('Command.dispatch cat <file> reports a read failure for a nonexistent fil
 ensure
   MRDebug::Hook.uninstall
 end
+
+assert('Command.dispatch frame/up/down with no current position report it') do
+  session = MRDebug::Session.new
+  %w[frame f up down].each do |verb|
+    out, action = MRDebug::Command.dispatch(session, verb)
+    assert_equal :stay, action
+    assert_equal ['No current position (not stopped anywhere yet)'], out
+  end
+ensure
+  MRDebug::Hook.uninstall
+end
+
+assert('Command.dispatch frame rejects a non-numeric frame number') do
+  session = MRDebug::Session.new
+  session.on_line('/x.rb', 1, binding)
+  out, _ = MRDebug::Command.dispatch(session, 'frame abc')
+  assert_equal ['Invalid frame number: abc'], out
+  out, _ = MRDebug::Command.dispatch(session, 'frame')
+  assert_equal ['#0 /x.rb:1'], out
+ensure
+  MRDebug::Hook.uninstall
+end

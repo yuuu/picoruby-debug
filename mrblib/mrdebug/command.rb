@@ -9,6 +9,9 @@ module MRDebug
       'l' => :list, 'list' => :list,
       'p' => :print, 'print' => :print,
       'bt' => :backtrace, 'backtrace' => :backtrace, 'where' => :backtrace,
+      'f' => :frame, 'frame' => :frame,
+      'up' => :up,
+      'down' => :down,
       'cat' => :cat,
       'display' => :display,
       'watch' => :watch,
@@ -41,6 +44,12 @@ module MRDebug
         [print_cmd(session, arg), :stay]
       when :backtrace
         [backtrace_cmd(session), :stay]
+      when :frame
+        [frame_cmd(session, arg), :stay]
+      when :up
+        [move_frame(session, parse_count(arg)), :stay]
+      when :down
+        [move_frame(session, -parse_count(arg)), :stay]
       when :cat
         [cat_cmd(session, arg), :stay]
       when :display
@@ -243,10 +252,10 @@ module MRDebug
     end
 
     def self.list_cmd(session, arg)
-      file = session.file
-      return ['No current position (not stopped anywhere yet)'] if file.nil?
+      loc = session.location
+      return ['No current position (not stopped anywhere yet)'] if loc.nil?
 
-      line = session.line
+      file, line = loc
       unless blank?(arg)
         file, line = parse_location(file, arg)
         return ['Invalid line number'] unless line && line > 0
@@ -320,11 +329,55 @@ module MRDebug
       lines
     end
 
+    # `frame` alone shows the selected frame; `frame N` selects frame N
+    # (numbered as by `bt`).
+    def self.frame_cmd(session, arg)
+      return ['No current position (not stopped anywhere yet)'] if session.location.nil?
+      return [frame_line(session.frame_index, session.location)] if blank?(arg)
+
+      n = trim(arg)
+      return ["Invalid frame number: #{n}"] unless digits?(n)
+      loc = session.select_frame(n.to_i)
+      return ["No frame ##{n}"] if loc.nil?
+      [frame_line(session.frame_index, loc)]
+    end
+
+    # up (delta > 0) moves toward callers, down (delta < 0) back toward
+    # the stop. Clamped at either end, like debug gem's up/down.
+    def self.move_frame(session, delta)
+      return ['No current position (not stopped anywhere yet)'] if session.location.nil?
+      from = session.frame_index
+      to = from + delta
+      to = 0 if to < 0
+      loc = session.select_frame(to)
+      while loc.nil? && to > from
+        to -= 1
+        loc = session.select_frame(to)
+      end
+      return [delta > 0 ? 'Already at the outermost frame' : 'Already at the innermost frame'] if to == from
+      [frame_line(to, loc)]
+    end
+
+    def self.frame_line(n, loc)
+      "##{n} #{loc[0]}:#{loc[1]}"
+    end
+
+    def self.digits?(str)
+      return false if str.empty?
+      i = 0
+      while i < str.size
+        return false unless str[i] >= '0' && str[i] <= '9'
+        i += 1
+      end
+      true
+    end
+
     # Unlike list_cmd, this is the whole file, unwindowed and with no line
     # numbers -- DapBridge's `source` handling wants raw source text (a
     # remote file VS Code has no local copy of), not a human-facing listing.
     def self.cat_cmd(session, arg)
-      file = blank?(arg) ? session.file : trim(arg)
+      loc = session.location
+      file = blank?(arg) ? (loc && loc[0]) : trim(arg)
       return ['No current position (not stopped anywhere yet)'] if file.nil?
       return ['Source listing is not available (no filesystem access in this build)'] unless defined?(File)
 

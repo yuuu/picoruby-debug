@@ -20,6 +20,18 @@ module MRDebug
       @session.binding
     end
 
+    def location
+      @session.location
+    end
+
+    def frame_index
+      @session.frame_index
+    end
+
+    def select_frame(n)
+      @session.select_frame(n)
+    end
+
     def stopped_by
       @session.stopped_by
     end
