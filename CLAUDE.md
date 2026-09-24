@@ -407,28 +407,32 @@ table is affected. `mrblib/mrdebug/line_breakpoint.rb`'s suffix match and
   environment: `MRDEBUG_SOCK` → `listen_unix`; else `MRDEBUG_PORT` →
   `listen_tcp` on it; else `attach_stdio` (a `Session` whose `LocalConsole`
   talks to this process's own `STDIN`/`STDOUT` — no socket, no separate
-  `mrdebug` CLI, the common local case and what makes README's Usage
+  `mrdbg` CLI, the common local case and what makes README's Usage
   example work with zero setup). This is what lets a script carry nothing
   but `binding.debugger`. It's a one-shot by construction (`@session.nil?`
   gates it); a listener bind failure propagates out of `binding.debugger`
   rather than being swallowed. `DEFAULT_PORT` (4711, rdbg's convention) is
   only the fallback for a *port that was asked for but unspecified* — a
-  bare `MRDebug.listen_tcp`, or `mrdebug` with no args — not for
+  bare `MRDebug.listen_tcp`, or `mrdbg` with no args — not for
   `autostart`, which goes to stdio when `MRDEBUG_PORT` is unset.
   `env_value` tolerates a build without `mruby-env` (`defined?(ENV)`) and
   treats a blank value as unset.
+- **`tools/mrdbg/mrdbg_cli_main.c`** (host builds only) — the `mrdbg`
+  command's C launcher; mruby builds a `spec.bins` entry only from
+  `tools/<bin>/*.c`, so it sits apart from the Ruby under `tools/mrdebug/`.
+  It just calls `mrdbg_cli_main` (`tools/mrdebug/cli/main.rb`).
 - **`tools/mrdebug/cli/cli.rb`**'s `--port`/`--sock-path` (and no args at
   all, which reads `MRDEBUG_SOCK`/`MRDEBUG_PORT`, falling back to
   `DEFAULT_PORT`, via `connect_auto`) — connect via the
   transports above, then hand off to `#relay`: a raw `IO.select`-based
   byte pump between the socket and real `STDIN`/`STDOUT`, since the
   device's `(mrdbg) ` prompt has no trailing newline for a `#gets`-based
-  relay to wait on. A bare `mrdebug FILE:LINE` (a positional arg, no
+  relay to wait on. A bare `mrdbg FILE:LINE` (a positional arg, no
   connection flag) still runs the interim local demo session instead.
   `Command.dispatch` runs on the device side, so the CLI only relays
   bytes — no structured RPC layer needed here.
 - **`tools/mrdebug/cli/dap_server.rb`/`dap_bridge.rb`/`device_link.rb`**
-  (host builds only) — `mrdebug --port P --dap-port D`: a host-side DAP
+  (host builds only) — `mrdbg --port P --dap-port D`: a host-side DAP
   server (for vscode-rdbg's `attach`) that drives a device over the same
   plain-text `(mrdbg)` protocol, so no JSON ever reaches the device.
   `DapBridge#handle` maps requests to `(mrdbg)` commands (`bt` for

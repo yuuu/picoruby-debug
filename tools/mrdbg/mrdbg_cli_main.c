@@ -1,5 +1,5 @@
 /*
- * Generic launcher for the `mrdebug` host CLI binary. mruby's `spec.bins`
+ * Generic launcher for the `mrdbg` host CLI binary. mruby's `spec.bins`
  * convention always builds a bin from C sources under tools/<bin-name>/*.c
  * with no way to point one at a Ruby entry point directly, so this file
  * carries no debugger logic: it opens an mrb_state, exposes argv as ARGV,
@@ -25,7 +25,7 @@ main(int argc, char **argv)
   }
   mrb_define_global_const(mrb, "ARGV", mrb_argv);
 
-  mrb_funcall(mrb, mrb_top_self(mrb), "mrdebug_cli_main", 0);
+  mrb_funcall(mrb, mrb_top_self(mrb), "mrdbg_cli_main", 0);
 
   int status = EXIT_SUCCESS;
   if (mrb->exc) {
